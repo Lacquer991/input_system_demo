@@ -30,6 +30,8 @@ public interface Binding<ActionType extends Enum<ActionType>> {
 
         Duration getDuration();
 
+        Duration getInterval();
+
         @Override
         default BindingType getBindingType() {
             return BindingType.DOUBLE_TAP;
