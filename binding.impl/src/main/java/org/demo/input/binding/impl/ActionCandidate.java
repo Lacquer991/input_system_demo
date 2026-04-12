@@ -1,11 +1,11 @@
-package org.demo.input.binding.impl.processor;
+package org.demo.input.binding.impl;
 
 
 import org.demo.input.binding.Binding;
 
 import java.util.Set;
 
-record ActionCandidate<ActionType extends Enum<ActionType>>(
+public record ActionCandidate<ActionType extends Enum<ActionType>>(
 
         ActionType actionType,
 

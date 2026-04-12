@@ -1,6 +1,7 @@
 package org.demo.input.binding.impl.processor;
 
 
+import org.demo.input.binding.impl.ActionCandidate;
 import org.demo.input.source.KeyInputEvent;
 import org.reactivestreams.Publisher;
 import reactor.core.scheduler.Scheduler;

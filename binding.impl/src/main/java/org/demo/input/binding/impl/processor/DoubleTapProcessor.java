@@ -1,6 +1,7 @@
 package org.demo.input.binding.impl.processor;
 
 import org.demo.input.binding.Binding;
+import org.demo.input.binding.impl.ActionCandidate;
 import org.demo.input.source.KeyInputEvent;
 import org.demo.input.source.KeyInputEventType;
 import org.reactivestreams.Publisher;
