@@ -5,7 +5,7 @@ import org.demo.input.binding.Binding;
 
 import java.util.Set;
 
-public record ActionCandidate<ActionType extends Enum<ActionType>>(
+record ActionCandidate<ActionType extends Enum<ActionType>>(
 
         ActionType actionType,
 

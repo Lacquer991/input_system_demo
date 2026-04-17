@@ -1,15 +1,15 @@
-package org.demo.input.binding.impl.processor;
+package org.demo.input.binding.impl;
 
 
 import org.demo.input.binding.Binding;
-import org.demo.input.binding.BindingService;
 
 final class ActionProcessorFactory {
 
     private ActionProcessorFactory() {
     }
 
-    public static <ActionType extends Enum<ActionType>, KeyType extends Enum<KeyType>> ActionProcessor<ActionType, KeyType> create(Binding<ActionType> binding) {
+    public static <ActionType extends Enum<ActionType>, KeyType extends Enum<KeyType>>
+    ActionProcessor<ActionType, KeyType> create(Binding<ActionType> binding) {
         return switch (binding.getBindingType()) {
             case TAP -> new TapProcessor<>((Binding.Tap<ActionType>) binding);
 

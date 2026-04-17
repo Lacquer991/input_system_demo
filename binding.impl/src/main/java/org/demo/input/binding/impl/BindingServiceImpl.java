@@ -1,15 +1,14 @@
-package org.demo.input.binding.impl.service;
+package org.demo.input.binding.impl;
 
 import org.demo.input.binding.Binding;
 import org.demo.input.binding.BindingService;
 import org.reactivestreams.Publisher;
 import reactor.core.publisher.Sinks;
-import reactor.core.scheduler.Scheduler;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public class BindingServiceImpl<ActionType extends Enum<ActionType>> implements BindingService<ActionType> {
+class BindingServiceImpl<ActionType extends Enum<ActionType>> implements BindingService<ActionType> {
 
     private final Sinks.Many<List<Binding<ActionType>>> sink;
     private volatile List<Binding<ActionType>> currentBindings;
