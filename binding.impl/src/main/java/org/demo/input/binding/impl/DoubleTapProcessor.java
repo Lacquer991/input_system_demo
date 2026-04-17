@@ -1,7 +1,6 @@
-package org.demo.input.binding.impl.processor;
+package org.demo.input.binding.impl;
 
 import org.demo.input.binding.Binding;
-import org.demo.input.binding.impl.ActionCandidate;
 import org.demo.input.source.KeyInputEvent;
 import org.demo.input.source.KeyInputEventType;
 import org.reactivestreams.Publisher;
@@ -12,7 +11,6 @@ import reactor.core.scheduler.Scheduler;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Objects;
 
 class DoubleTapProcessor<ActionType extends Enum<ActionType>, KeyType extends Enum<KeyType>> implements ActionProcessor<ActionType, KeyType> {
 
@@ -58,8 +56,12 @@ class DoubleTapProcessor<ActionType extends Enum<ActionType>, KeyType extends En
 
                     return new TapState(st.lastDown(), null);
                 })
-                .map(TapState::produced)
-                .filter(Objects::nonNull);
+                .skip(1)
+                .handle((st, sink) -> {
+                    if (st.produced() != null) {
+                        sink.next(st.produced());
+                    }
+                });
 
         return Flux.defer(() -> {
             final class DoubleTapState {
@@ -83,10 +85,5 @@ class DoubleTapProcessor<ActionType extends Enum<ActionType>, KeyType extends En
                 }
             });
         });
-    }
-
-    @Override
-    public ActionType getActionType() {
-        return binding.getActionType();
     }
 }

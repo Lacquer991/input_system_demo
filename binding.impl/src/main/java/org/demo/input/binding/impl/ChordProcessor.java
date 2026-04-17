@@ -1,15 +1,12 @@
-package org.demo.input.binding.impl.processor;
+package org.demo.input.binding.impl;
 
 import org.demo.input.binding.Binding;
-import org.demo.input.binding.impl.ActionCandidate;
 import org.demo.input.source.KeyInputEvent;
 import org.demo.input.source.KeyInputEventType;
 import org.reactivestreams.Publisher;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Scheduler;
 
-import java.time.Duration;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -25,13 +22,13 @@ class ChordProcessor<ActionType extends Enum<ActionType>, KeyType extends Enum<K
     public Publisher<ActionCandidate<ActionType>> process(Publisher<KeyInputEvent<KeyType>> events, Scheduler scheduler) {
         Set<Enum<?>> requiredKeys = binding.getKeys();
 
-        Duration delay = Duration.ofMillis(200);
+        Flux<KeyInputEvent<KeyType>> relevant = Flux.from(events)
+                .filter(e -> requiredKeys.contains(e.getKeyType()));
 
-        Flux<KeyInputEvent<KeyType>> keyEvents = Flux.from(events).share();
         record State(Set<Enum<?>> pressed, boolean active, KeyInputEvent<?> lastKey) {
         }
 
-        Flux<State> states = keyEvents.scan(
+        Flux<State> states = relevant.scan(
                 new State(Set.of(), false, null),
                 (st, e) -> {
                     Set<Enum<?>> next = new HashSet<>(st.pressed());
@@ -43,24 +40,11 @@ class ChordProcessor<ActionType extends Enum<ActionType>, KeyType extends Enum<K
 
                     return new State(Set.copyOf(next), active, e);
                 }
-        ).skip(1).share();
+        ).skip(1);
 
-        Flux<State> activated = states.buffer(2, 1)
-                .filter(b -> b.size() == 2 && !b.get(0).active() && b.get(1).active())
-                .map(b -> b.get(1));
-
-        Flux<State> deactivated = states.filter(s -> !s.active()).share();
-
-        return activated.switchMap(act ->
-                Mono.delay(delay, scheduler)
-                        .takeUntilOther(deactivated.next())
-                        .takeUntilOther(keyEvents
-                                .filter(e -> e.getEventType() == KeyInputEventType.KEY_DOWN)
-                                .filter(e -> !requiredKeys.contains(e.getKeyType()))
-                                .next()
-                        )
-                        .map(t -> ActionCandidate.chord(binding.getActionType(), Set.copyOf(requiredKeys)))
-                        .flux()
-        );
+        return states
+                .filter(s -> s.lastKey() != null && s.lastKey().getEventType() == KeyInputEventType.KEY_DOWN)
+                .filter(State::active)
+                .map(s -> ActionCandidate.chord(binding.getActionType(), Set.copyOf(requiredKeys)));
     }
 }

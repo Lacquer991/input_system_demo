@@ -1,7 +1,6 @@
-package org.demo.input.binding.impl.processor;
+package org.demo.input.binding.impl;
 
 import org.demo.input.binding.Binding;
-import org.demo.input.binding.impl.ActionCandidate;
 import org.demo.input.source.KeyInputEvent;
 import org.demo.input.source.KeyInputEventType;
 import org.reactivestreams.Publisher;
@@ -54,13 +53,8 @@ class HoldProcessor<ActionType extends Enum<ActionType>, KeyType extends Enum<Ke
 
         return activated.switchMap(act -> Mono.delay(holdDuration, scheduler)
                 .takeUntilOther(deactivated.next())
-                .thenReturn(ActionCandidate.hold(binding.getActionType(), Set.copyOf(requiredKeys)))
+                .map(t -> ActionCandidate.hold(binding.getActionType(), Set.copyOf(requiredKeys)))
                 .flux()
         );
-    }
-
-    @Override
-    public ActionType getActionType() {
-        return binding.getActionType();
     }
 }

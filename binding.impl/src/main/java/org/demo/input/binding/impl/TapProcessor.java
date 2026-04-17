@@ -1,7 +1,6 @@
-package org.demo.input.binding.impl.processor;
+package org.demo.input.binding.impl;
 
 import org.demo.input.binding.Binding;
-import org.demo.input.binding.impl.ActionCandidate;
 import org.demo.input.source.KeyInputEvent;
 import org.demo.input.source.KeyInputEventType;
 import org.reactivestreams.Publisher;
@@ -47,10 +46,5 @@ class TapProcessor<ActionType extends Enum<ActionType>, KeyType extends Enum<Key
 
     private boolean isWithin(Instant downTimestamp, Instant upTimestamp, Duration tapDuration) {
         return !upTimestamp.isBefore(downTimestamp) && Duration.between(downTimestamp, upTimestamp).compareTo(tapDuration) <= 0;
-    }
-
-    @Override
-    public ActionType getActionType() {
-        return binding.getActionType();
     }
 }
