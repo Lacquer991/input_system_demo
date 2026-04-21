@@ -12,6 +12,7 @@ import reactor.core.scheduler.Scheduler;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 class TapOrDoubleTapProcessor<ActionType extends Enum<ActionType>, KeyType extends Enum<KeyType>>
@@ -102,7 +103,7 @@ class TapOrDoubleTapProcessor<ActionType extends Enum<ActionType>, KeyType exten
 
         if (st.pendingFirst != null && st.waitingSecondUp) {
             Duration interval = Duration.between(st.pendingFirst.firstUpAt(), st.secondDownAt);
-            boolean intervalOk = !interval.isNegative() && interval.compareTo(doubleTapBinding.getInterval()) <= 0;
+            boolean intervalOk = !interval.isNegative() && interval.compareTo(Objects.requireNonNull(doubleTapBinding).getInterval()) <= 0;
 
             if (intervalOk && validForDoubleTap) {
                 sink.next(doubleTapBinding.getActionType());

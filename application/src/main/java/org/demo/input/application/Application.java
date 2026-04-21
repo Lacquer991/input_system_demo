@@ -39,10 +39,10 @@ public class Application {
         try {
             events = Flux.from(inputSource.getEventPublisher())
                     .subscribe(event -> System.err.println("Event: " + event),
-                            err -> err.printStackTrace());
+                            Throwable::printStackTrace);
             actions = Flux.from(actionPublisher.getActionPublisher())
                     .subscribe(action -> System.out.println("Action: " + action),
-                            err -> err.printStackTrace());
+                            Throwable::printStackTrace);
 
 
 

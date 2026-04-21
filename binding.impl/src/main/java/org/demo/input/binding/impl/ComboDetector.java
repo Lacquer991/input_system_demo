@@ -29,7 +29,6 @@ final class ComboDetector {
             Publisher<KeyInputEvent<KeyType>> events, Set<Enum<?>> requiredKeys,
             Set<Enum<?>> observedKeys, boolean exactMatch) {
 
-        Set<Enum<?>> required = Set.copyOf(requiredKeys);
         Set<Enum<?>> observed = Set.copyOf(observedKeys);
 
         Flux<KeyInputEvent<KeyType>> keyEvents = Flux.from(events)
@@ -65,12 +64,5 @@ final class ComboDetector {
                 .map(State::last);
 
         return new Signals<>(activated, deactivated);
-    }
-
-    static <KeyType extends Enum<KeyType>> Signals<KeyType> detectSubset(
-            Publisher<KeyInputEvent<KeyType>> events, Set<Enum<?>> requiredKeys
-    ) {
-        Set<Enum<?>> req = Set.copyOf(requiredKeys);
-        return detect(events, req, req, false);
     }
 }
