@@ -2,15 +2,12 @@ package org.demo.input.binding.impl;
 
 import org.demo.input.binding.Binding;
 import org.demo.input.source.KeyInputEvent;
-import org.demo.input.source.KeyInputEventType;
 import org.reactivestreams.Publisher;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.SynchronousSink;
 import reactor.core.scheduler.Scheduler;
 
 
 import java.time.Duration;
-import java.time.Instant;
 
 class DoubleTapProcessor<ActionType extends Enum<ActionType>, KeyType extends Enum<KeyType>> implements ActionProcessor<ActionType, KeyType> {
 
@@ -20,65 +17,30 @@ class DoubleTapProcessor<ActionType extends Enum<ActionType>, KeyType extends En
         this.binding = binding;
     }
 
-    private record TapAction(Instant down, Instant up) {
-    }
-
     @Override
-    public Publisher<ActionCandidate<ActionType>> process(Publisher<KeyInputEvent<KeyType>> events, Scheduler scheduler) {
+    public Publisher<ActionType> process(Publisher<KeyInputEvent<KeyType>> events, Scheduler scheduler) {
         Enum<?> key = binding.getKey();
         Duration tapDuration = binding.getDuration();
         Duration interval = binding.getInterval();
 
-        Flux<KeyInputEvent<KeyType>> keyEvents = Flux.from(events)
-                .filter(e -> e.getKeyType().equals(key))
-                .share();
-
-        record TapState(Instant lastDown, TapAction produced) {
-        }
-
-        Flux<TapAction> taps = keyEvents
-                .scan(new TapState(null, null), (TapState st, KeyInputEvent<KeyType> e) -> {
-
-                    if (e.getEventType() == KeyInputEventType.KEY_DOWN) {
-                        return new TapState(e.getTimestamp(), null);
-                    }
-
-                    if (e.getEventType() == KeyInputEventType.KEY_UP && st.lastDown() != null) {
-                        Instant up = e.getTimestamp();
-                        Duration pressed = Duration.between(st.lastDown(), up);
-
-                        if (!pressed.isNegative() && pressed.compareTo(tapDuration) <= 0) {
-                            return new TapState(null, new TapAction(st.lastDown(), up));
-                        }
-
-                        return new TapState(null, null);
-                    }
-
-                    return new TapState(st.lastDown(), null);
-                })
-                .skip(1)
-                .handle((st, sink) -> {
-                    if (st.produced() != null) {
-                        sink.next(st.produced());
-                    }
-                });
+        Flux<TapDetector.TapGesture> taps = TapDetector.detect(events, key)
+                .filter(g -> !g.interrupted())
+                .filter(g -> Duration.between(g.downAt(), g.upAt()).compareTo(tapDuration) <= 0);
 
         return Flux.defer(() -> {
-            final class DoubleTapState {
-                TapAction first;
+            final class State {
+                TapDetector.TapGesture first;
             }
-            DoubleTapState st = new DoubleTapState();
+            State st = new State();
 
-            return taps.handle((TapAction tap, SynchronousSink<ActionCandidate<ActionType>> sink) -> {
+            return taps.handle((tap, sink) -> {
                 if (st.first == null) {
                     st.first = tap;
                     return;
                 }
-
-                Duration currentInterval = Duration.between(st.first.up(), tap.down());
-
-                if (!currentInterval.isNegative() && currentInterval.compareTo(interval) <= 0) {
-                    sink.next(ActionCandidate.doubleTap(binding.getActionType(), key));
+                Duration dt = Duration.between(st.first.upAt(), tap.downAt());
+                if (!dt.isNegative() && dt.compareTo(interval) <= 0) {
+                    sink.next(binding.getActionType());
                     st.first = null;
                 } else {
                     st.first = tap;

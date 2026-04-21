@@ -5,6 +5,7 @@ import org.demo.input.source.KeyInputEvent;
 import org.demo.input.source.KeyInputEventType;
 import org.reactivestreams.Publisher;
 import reactor.core.Disposable;
+import reactor.core.Disposables;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.FluxSink;
 import reactor.core.scheduler.Scheduler;
@@ -31,133 +32,106 @@ class TapOrDoubleTapProcessor<ActionType extends Enum<ActionType>, KeyType exten
     private record PendingFirst(boolean validSingle, Instant firstUpAt) {
     }
 
-    private final class State {
-        Instant downAt;
-        boolean interrupted;
-
+    private static final class State {
         PendingFirst pendingFirst;
         boolean waitingSecondUp;
-        Disposable intervalTimer;
+        Instant secondDownAt;
+        Disposable timer;
 
         void cancelTimer() {
-            if (intervalTimer != null) {
-                intervalTimer.dispose();
-                intervalTimer = null;
+            if (timer != null) {
+                timer.dispose();
+                timer = null;
             }
         }
 
-        void clearPending() {
+        void clear() {
             cancelTimer();
             pendingFirst = null;
             waitingSecondUp = false;
+            secondDownAt = null;
         }
     }
 
     @Override
-    public Publisher<ActionCandidate<ActionType>> process(Publisher<KeyInputEvent<KeyType>> events, Scheduler scheduler) {
+    public Publisher<ActionType> process(Publisher<KeyInputEvent<KeyType>> events, Scheduler scheduler) {
 
-        Flux<KeyInputEvent<KeyType>> keyEvents = Flux.from(events);
+        Flux<KeyInputEvent<KeyType>> keyEvents = Flux.from(events).share();
+
+        Flux<Instant> downs = keyEvents
+                .filter(e -> e.getEventType() == KeyInputEventType.KEY_DOWN)
+                .filter(e -> e.getKeyType().equals(key))
+                .map(KeyInputEvent::getTimestamp);
+
+        Flux<TapDetector.TapGesture> gestures = TapDetector.detect(keyEvents, key);
 
         return Flux.create(sink -> {
             State st = new State();
+            var cd = Disposables.composite();
 
-            Disposable sub = keyEvents.subscribe(
-                    e -> onEvent(e, st, sink, scheduler),
-                    sink::error,
-                    sink::complete
-            );
+            cd.add(downs.subscribe(ts -> onKeyDown(ts, st), sink::error));
+            cd.add(gestures.subscribe(g -> onGesture(g, st, sink, scheduler), sink::error));
 
             sink.onDispose(() -> {
-                sub.dispose();
+                cd.dispose();
                 st.cancelTimer();
             });
         }, FluxSink.OverflowStrategy.BUFFER);
-
     }
 
-    private void onEvent(KeyInputEvent<KeyType> e, State st, FluxSink<ActionCandidate<ActionType>> sink, Scheduler scheduler) {
 
-        boolean isOurKey = e.getKeyType().equals(key);
+    private void onKeyDown(Instant ts, State st) {
+        if (doubleTapBinding == null) return;
+        if (st.pendingFirst == null || st.waitingSecondUp) return;
 
-        if (!isOurKey && st.downAt != null) {
-            st.interrupted = true;
-        }
-
-        if (!isOurKey) return;
-
-        if (e.getEventType() == KeyInputEventType.KEY_DOWN) {
-            onKeyDown(e.getTimestamp(), st, sink);
-        } else {
-            onKeyUp(e.getTimestamp(), st, sink, scheduler);
+        Duration dt = Duration.between(st.pendingFirst.firstUpAt(), ts);
+        if (!dt.isNegative() && dt.compareTo(doubleTapBinding.getInterval()) <= 0) {
+            st.secondDownAt = ts;
+            st.waitingSecondUp = true;
+            st.cancelTimer();
         }
     }
 
-    private void onKeyDown(Instant ts, State st, FluxSink<ActionCandidate<ActionType>> sink) {
 
-        if (st.downAt != null) return;
+    private void onGesture(TapDetector.TapGesture g, State st, FluxSink<ActionType> sink, Scheduler scheduler) {
 
-        if (st.pendingFirst != null && !st.waitingSecondUp && doubleTapBinding != null) {
-            Duration dt = Duration.between(st.pendingFirst.firstUpAt(), ts);
+        Duration dur = Duration.between(g.downAt(), g.upAt());
 
-            if (!dt.isNegative() && dt.compareTo(doubleTapBinding.getInterval()) <= 0) {
-                st.waitingSecondUp = true;
-                st.cancelTimer();
-            } else {
-                flushFirstSingleIfAny(st, sink);
-                st.clearPending();
-            }
-        }
-
-        st.downAt = ts;
-        st.interrupted = false;
-    }
-
-    private void onKeyUp(Instant upAt, State st, FluxSink<ActionCandidate<ActionType>> sink, Scheduler scheduler) {
-        if (st.downAt == null) return;
-
-        Instant downAt = st.downAt;
-        st.downAt = null;
-
-        Duration pressed = Duration.between(downAt, upAt);
-        if (pressed.isNegative()) return;
-
-        boolean validForTap = tapBinding != null && !st.interrupted && pressed.compareTo(tapBinding.getDuration()) <= 0;
-
-        boolean validForDoubleTap = doubleTapBinding != null && !st.interrupted && pressed.compareTo(doubleTapBinding.getDuration()) <= 0;
+        boolean validSingle = tapBinding != null && !g.interrupted() && dur.compareTo(tapBinding.getDuration()) <= 0;
+        boolean validForDoubleTap = doubleTapBinding != null && !g.interrupted() && dur.compareTo(doubleTapBinding.getDuration()) <= 0;
 
         if (st.pendingFirst != null && st.waitingSecondUp) {
-            if (validForDoubleTap) {
-                sink.next(ActionCandidate.doubleTap(doubleTapBinding.getActionType(), key));
+            Duration interval = Duration.between(st.pendingFirst.firstUpAt(), st.secondDownAt);
+            boolean intervalOk = !interval.isNegative() && interval.compareTo(doubleTapBinding.getInterval()) <= 0;
+
+            if (intervalOk && validForDoubleTap) {
+                sink.next(doubleTapBinding.getActionType());
             } else {
-                flushFirstSingleIfAny(st, sink);
-                if (validForTap) {
-                    sink.next(ActionCandidate.tap(tapBinding.getActionType(), key));
-                }
+                flushPendingSingle(st, sink);
+                if (validSingle) sink.next(tapBinding.getActionType());
             }
-            st.clearPending();
+            st.clear();
             return;
         }
 
         if (doubleTapBinding != null && validForDoubleTap) {
-            st.pendingFirst = new PendingFirst(validForTap, upAt);
+            st.cancelTimer();
+            st.pendingFirst = new PendingFirst(validSingle, g.upAt());
 
-            st.intervalTimer = scheduler.schedule(() -> {
-                flushFirstSingleIfAny(st, sink);
-                st.clearPending();
+            st.timer = scheduler.schedule(() -> {
+                flushPendingSingle(st, sink);
+                st.clear();
             }, doubleTapBinding.getInterval().toMillis(), TimeUnit.MILLISECONDS);
 
             return;
         }
 
-        if (validForTap) {
-            sink.next(ActionCandidate.tap(tapBinding.getActionType(), key));
-        }
+        if (validSingle) sink.next(tapBinding.getActionType());
     }
 
-    private void flushFirstSingleIfAny(State st, FluxSink<ActionCandidate<ActionType>> sink) {
-        if (st.pendingFirst == null) return;
-        if (st.pendingFirst.validSingle() && tapBinding != null) {
-            sink.next(ActionCandidate.tap(tapBinding.getActionType(), key));
+    private void flushPendingSingle(State st, FluxSink<ActionType> sink) {
+        if (st.pendingFirst != null && st.pendingFirst.validSingle() && tapBinding != null) {
+            sink.next(tapBinding.getActionType());
         }
     }
 }

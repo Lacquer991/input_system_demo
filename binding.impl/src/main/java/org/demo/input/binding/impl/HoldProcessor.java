@@ -4,57 +4,40 @@ import org.demo.input.binding.Binding;
 import org.demo.input.source.KeyInputEvent;
 import org.demo.input.source.KeyInputEventType;
 import org.reactivestreams.Publisher;
-import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Scheduler;
 
-import java.time.Duration;
-import java.util.HashSet;
+
 import java.util.Set;
 
 class HoldProcessor<ActionType extends Enum<ActionType>, KeyType extends Enum<KeyType>> implements ActionProcessor<ActionType, KeyType> {
 
     private final Binding.Hold<ActionType> binding;
 
-    HoldProcessor(Binding.Hold<ActionType> binding) {
+    private final Set<Enum<?>> observedKeys;
+
+    private final boolean exactMatch;
+
+    HoldProcessor(Binding.Hold<ActionType> binding, Set<Enum<?>> observedKeys, boolean exactMatch) {
         this.binding = binding;
+        this.observedKeys = Set.copyOf(observedKeys);
+        this.exactMatch = exactMatch;
     }
 
 
     @Override
-    public Publisher<ActionCandidate<ActionType>> process(Publisher<KeyInputEvent<KeyType>> events, Scheduler scheduler) {
-        Set<Enum<?>> requiredKeys = binding.getKeys();
-        Duration holdDuration = binding.getDuration();
+    public Publisher<ActionType> process(Publisher<KeyInputEvent<KeyType>> events, Scheduler scheduler) {
+        Set<Enum<?>> requiredKeys = Set.copyOf(binding.getKeys());
 
-        Flux<KeyInputEvent<KeyType>> relevant = Flux.from(events)
-                .filter(e -> requiredKeys.contains(e.getKeyType()));
+        var signals = ComboDetector.detect(events, requiredKeys, observedKeys, exactMatch);
 
-        record State(Set<Enum<?>> pressed, boolean active) {
-        }
-
-        Flux<State> states = relevant.scan(new State(Set.of(), false),
-                (s, e) -> {
-                    Set<Enum<?>> next = new HashSet<>(s.pressed());
-
-                    if (e.getEventType() == KeyInputEventType.KEY_DOWN) next.add(e.getKeyType());
-                    if (e.getEventType() == KeyInputEventType.KEY_UP) next.remove(e.getKeyType());
-
-                    boolean active = next.containsAll(requiredKeys);
-
-                    return new State(Set.copyOf(next), active);
-                }).skip(1).share();
-
-        Flux<State> activated = states.buffer(2, 1)
-                .filter(buffer -> buffer.size() == 2)
-                .filter(buffer -> !buffer.get(0).active() && buffer.get(1).active())
-                .map(buffer -> buffer.get(1));
-
-        Flux<State> deactivated = states.filter(s -> !s.active());
-
-        return activated.switchMap(act -> Mono.delay(holdDuration, scheduler)
-                .takeUntilOther(deactivated.next())
-                .map(t -> ActionCandidate.hold(binding.getActionType(), Set.copyOf(requiredKeys)))
-                .flux()
-        );
+        return signals.activated()
+                .filter(e -> e.getEventType() == KeyInputEventType.KEY_DOWN)
+                .switchMap(__ ->
+                        Mono.delay(binding.getDuration(), scheduler)
+                                .takeUntilOther(signals.deactivated().next())
+                                .map(t -> binding.getActionType())
+                                .flux()
+                );
     }
 }
