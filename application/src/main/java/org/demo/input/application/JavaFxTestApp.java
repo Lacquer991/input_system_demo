@@ -49,7 +49,7 @@ public class JavaFxTestApp extends Application {
         Platform.runLater(root::requestFocus);
 
         BindingImplProvider provider = BindingServiceLocator.getBindingImplProvider();
-        Scheduler loop = Schedulers.newSingle("input-loop");
+        loop = Schedulers.newSingle("input-loop");
 
         KeyInputSource<KeyType> inputSource = new JavaFxKeyInputSource(scene);
 
@@ -65,7 +65,8 @@ public class JavaFxTestApp extends Application {
 
         bindingService.setBindings(List.of(
                 Bindings.createChordBinding(ActionType.SAVE, EnumSet.of(KeyType.CTRL, KeyType.S)),
-                Bindings.createHoldBinding(ActionType.SAVE_AS, EnumSet.of(KeyType.CTRL, KeyType.Q, KeyType.S), Duration.ofMillis(500)),
+                Bindings.createHoldBinding(ActionType.SAVE_AS, EnumSet.of(KeyType.CTRL, KeyType.S), Duration.ofMillis(500)),
+                Bindings.createHoldBinding(ActionType.DELETE, EnumSet.of(KeyType.CTRL, KeyType.S, KeyType.Q), Duration.ofMillis(500)),
                 Bindings.createTapBinding(ActionType.OPEN_MAP, KeyType.M, Duration.ofMillis(300)),
                 Bindings.createTapBinding(ActionType.SELECT_HOME_POINT, KeyType.H, Duration.ofMillis(300)),
                 Bindings.createDouleTapBinding(ActionType.GO_TO_HOME_POINT, KeyType.H, Duration.ofMillis(200), Duration.ofMillis(300))

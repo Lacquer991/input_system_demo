@@ -38,9 +38,13 @@ public class Application {
 
         try {
             events = Flux.from(inputSource.getEventPublisher())
-                    .subscribe(event -> System.err.println("Event: " + event));
+                    .subscribe(event -> System.err.println("Event: " + event),
+                            err -> err.printStackTrace());
             actions = Flux.from(actionPublisher.getActionPublisher())
-                    .subscribe(action -> System.err.println("Action: " + action));
+                    .subscribe(action -> System.out.println("Action: " + action),
+                            err -> err.printStackTrace());
+
+
 
             bindingService.setBindings(List.of(
                     Bindings.createChordBinding(ActionType.SAVE, EnumSet.of(KeyType.CTRL, KeyType.S)),
