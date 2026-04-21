@@ -5,5 +5,6 @@ public enum ActionType {
     SAVE_AS,
     OPEN_MAP,
     SELECT_HOME_POINT,
-    GO_TO_HOME_POINT
+    GO_TO_HOME_POINT,
+    DELETE
 }
