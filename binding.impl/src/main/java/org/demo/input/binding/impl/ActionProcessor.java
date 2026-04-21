@@ -7,5 +7,5 @@ import reactor.core.scheduler.Scheduler;
 
 interface ActionProcessor<ActionType extends Enum<ActionType>, KeyType extends Enum<KeyType>> {
 
-    Publisher<ActionCandidate<ActionType>> process(Publisher<KeyInputEvent<KeyType>> events, Scheduler scheduler);
+    Publisher<ActionType> process(Publisher<KeyInputEvent<KeyType>> events, Scheduler scheduler);
 }
