@@ -10,7 +10,7 @@ import java.time.Duration;
 import java.util.*;
 import java.util.function.Consumer;
 
-public class InputEngine<ActionType extends Enum<ActionType>, KeyType extends Enum<KeyType>> {
+class InputEngine<ActionType extends Enum<ActionType>, KeyType extends Enum<KeyType>> {
 
     private final Consumer<ActionType> emit;
 
@@ -18,10 +18,10 @@ public class InputEngine<ActionType extends Enum<ActionType>, KeyType extends En
 
     private final Set<Enum<?>> pressed = new HashSet<>();
 
-    private final Map<Enum<?>, KeyRecognizer<ActionType>> keyRecognizers = new HashMap<>();
-    private final Map<Set<Enum<?>>, ComboRecognizer<ActionType, KeyType>> comboRecognizers = new HashMap<>();
+    private final Map<Enum<?>, KeyProcessor<ActionType>> keyProcessors = new HashMap<>();
+    private final Map<Set<Enum<?>>, ComboProcessor<ActionType, KeyType>> comboProcessors = new HashMap<>();
 
-    private final Map<Enum<?>, List<ComboRecognizer<ActionType, KeyType>>> combosByObservedKey = new HashMap<>();
+    private final Map<Enum<?>, List<ComboProcessor<ActionType, KeyType>>> combosByObservedKey = new HashMap<>();
 
     InputEngine(Consumer<ActionType> emit, Scheduler scheduler) {
         this.emit = emit;
@@ -31,19 +31,19 @@ public class InputEngine<ActionType extends Enum<ActionType>, KeyType extends En
     void setBindings(List<Binding<ActionType>> bindings) {
         dispose();
         pressed.clear();
-        keyRecognizers.clear();
-        comboRecognizers.clear();
+        keyProcessors.clear();
+        comboProcessors.clear();
         combosByObservedKey.clear();
 
         Compiled<ActionType> compiled = Compiled.compile(bindings, Duration.ofMillis(100));
 
         for (var e : compiled.keyRules.entrySet()) {
-            keyRecognizers.put(e.getKey(), new KeyRecognizer<>(e.getKey(), e.getValue(), scheduler, emit));
+            keyProcessors.put(e.getKey(), new KeyProcessor<>(e.getKey(), e.getValue(), scheduler, emit));
         }
 
         for (ComboRule<ActionType> rule : compiled.comboRules.values()) {
-            var rec = new ComboRecognizer<ActionType, KeyType>(rule, scheduler, emit);
-            comboRecognizers.put(rule.requiredKeys(), rec);
+            var rec = new ComboProcessor<ActionType, KeyType>(rule, scheduler, emit);
+            comboProcessors.put(rule.requiredKeys(), rec);
 
             for (Enum<?> ok : rule.observedKeys()) {
                 combosByObservedKey.computeIfAbsent(ok, __ -> new ArrayList<>()).add(rec);
@@ -54,24 +54,27 @@ public class InputEngine<ActionType extends Enum<ActionType>, KeyType extends En
     void onEvent(KeyInputEvent<KeyType> e) {
         Enum<?> key = e.getKeyType();
 
-        // 1) любое событие другой клавиши прерывает tap для всех клавиш, которые сейчас "в нажатии"
-        for (KeyRecognizer<ActionType> r : keyRecognizers.values()) {
-            if (!r.key().equals(key)) r.interruptIfDown();
+        for (KeyProcessor<ActionType> kp : keyProcessors.values()) {
+            if (!kp.key().equals(key)) {
+                kp.interruptIfDown();
+            }
         }
 
-        // 2) обновляем глобальный pressed-set
-        if (e.getEventType() == KeyInputEventType.KEY_DOWN) pressed.add(key);
-        else pressed.remove(key);
+        if (e.getEventType() == KeyInputEventType.KEY_DOWN) {
+            pressed.add(key);
+        } else {
+            pressed.remove(key);
+        }
 
-        // 3) обновляем key recognizer (tap/dtap)
-        KeyRecognizer<ActionType> kr = keyRecognizers.get(key);
-        if (kr != null) kr.onEvent(e);
+        KeyProcessor<ActionType> kp = keyProcessors.get(key);
+        if (kp != null) {
+            kp.onEvent(e);
+        }
 
-        // 4) обновляем только combo-распознаватели, которым важна эта клавиша (observed)
-        List<ComboRecognizer<ActionType, KeyType>> list = combosByObservedKey.get(key);
+        List<ComboProcessor<ActionType, KeyType>> list = combosByObservedKey.get(key);
         if (list != null) {
-            for (ComboRecognizer<ActionType, KeyType> cr : list) {
-                cr.onEvent(e, pressed);
+            for (ComboProcessor<ActionType, KeyType> cp : list) {
+                cp.onEvent(e, pressed);
             }
         }
     }
@@ -166,7 +169,7 @@ public class InputEngine<ActionType extends Enum<ActionType>, KeyType extends En
     }
 
     void dispose() {
-        keyRecognizers.values().forEach(KeyRecognizer::dispose);
-        comboRecognizers.values().forEach(ComboRecognizer::dispose);
+        keyProcessors.values().forEach(KeyProcessor::dispose);
+        comboProcessors.values().forEach(ComboProcessor::dispose);
     }
 }

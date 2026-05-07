@@ -9,7 +9,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
-public class ComboRecognizer<ActionType extends Enum<ActionType>, KeyType extends Enum<KeyType>> {
+class ComboProcessor<ActionType extends Enum<ActionType>, KeyType extends Enum<KeyType>> {
     private final ComboRule<ActionType> rule;
     private final Scheduler scheduler;
 
@@ -23,7 +23,7 @@ public class ComboRecognizer<ActionType extends Enum<ActionType>, KeyType extend
 
     private Disposable chordConfirmTimer;
 
-    ComboRecognizer(ComboRule<ActionType> rule, Scheduler scheduler, Consumer<ActionType> emit) {
+    ComboProcessor(ComboRule<ActionType> rule, Scheduler scheduler, Consumer<ActionType> emit) {
         this.rule = rule;
 
         this.scheduler = scheduler;
@@ -116,11 +116,17 @@ public class ComboRecognizer<ActionType extends Enum<ActionType>, KeyType extend
     }
 
     private void cancelHold() {
-        if (holdTimer != null) { holdTimer.dispose(); holdTimer = null; }
+        if (holdTimer != null) {
+            holdTimer.dispose();
+            holdTimer = null;
+        }
     }
 
     private void cancelChordConfirm() {
-        if (chordConfirmTimer != null) { chordConfirmTimer.dispose(); chordConfirmTimer = null; }
+        if (chordConfirmTimer != null) {
+            chordConfirmTimer.dispose();
+            chordConfirmTimer = null;
+        }
     }
 
     void dispose() {

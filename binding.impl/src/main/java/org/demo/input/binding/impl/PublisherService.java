@@ -40,7 +40,7 @@ class PublisherService<ActionType extends Enum<ActionType>, KeyType extends Enum
     }
 
     @Override
-    public void close() throws Exception {
+    public void close() {
         inputSourceSub.dispose();
         bindingsSub.dispose();
         engine.dispose();

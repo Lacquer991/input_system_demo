@@ -10,7 +10,7 @@ import java.time.Instant;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
-public class KeyRecognizer<ActionType extends Enum<ActionType>> {
+class KeyProcessor<ActionType extends Enum<ActionType>> {
 
     private final Enum<?> key;
 
@@ -35,7 +35,7 @@ public class KeyRecognizer<ActionType extends Enum<ActionType>> {
     private record Pending(boolean validSingle, Instant firstUpAt) {
     }
 
-    KeyRecognizer(Enum<?> key, KeyRule<ActionType> rule, Scheduler scheduler, Consumer<ActionType> emit) {
+    KeyProcessor(Enum<?> key, KeyRule<ActionType> rule, Scheduler scheduler, Consumer<ActionType> emit) {
         this.key = key;
         this.rule = rule;
         this.scheduler = scheduler;

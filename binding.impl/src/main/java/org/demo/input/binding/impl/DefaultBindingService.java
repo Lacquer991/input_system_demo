@@ -8,12 +8,12 @@ import reactor.core.publisher.Sinks;
 import java.util.ArrayList;
 import java.util.List;
 
-class BindingServiceImpl<ActionType extends Enum<ActionType>> implements BindingService<ActionType> {
+class DefaultBindingService<ActionType extends Enum<ActionType>> implements BindingService<ActionType> {
 
     private final Sinks.Many<List<Binding<ActionType>>> sink;
     private volatile List<Binding<ActionType>> currentBindings;
 
-    public BindingServiceImpl() {
+    public DefaultBindingService() {
         sink = Sinks.many().replay().latest();
         currentBindings = new ArrayList<>();
     }

@@ -18,6 +18,6 @@ public final class DefaultBindingImplProvider implements BindingImplProvider {
 
     @Override
     public <ActionType extends Enum<ActionType>> BindingService<ActionType> createBindingService() {
-        return new BindingServiceImpl<>();
+        return new DefaultBindingService<>();
     }
 }
