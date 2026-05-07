@@ -23,6 +23,8 @@
         <module>binding</module>
         <module>binding.impl</module>
         <module>application</module>
+        <module>action</module>
+        <module>action.impl</module>
     </modules>
 
     <dependencyManagement>
