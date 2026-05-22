@@ -1,26 +1,27 @@
-package org.demo.input.action.impl;
+package org.demo.input.action;
 
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.ReadOnlyBooleanProperty;
 import javafx.beans.property.SimpleBooleanProperty;
-import org.demo.input.action.Action;
+import javafx.beans.value.ObservableBooleanValue;
 import org.demo.input.action.exceptions.ActionDisabledException;
 
-class FxAction<ActionType extends Enum<ActionType>> implements Action<ActionType> {
+
+final class FxAction<ActionType extends Enum<ActionType>> implements Action<ActionType> {
 
     private final ActionType actionType;
 
-    private final BooleanProperty enabled = new SimpleBooleanProperty(true);
-
     private final Runnable executor;
 
-    public FxAction(ActionType actionType, Runnable executor) {
+    private final BooleanProperty enabled = new SimpleBooleanProperty(true);
+
+    FxAction(ActionType actionType, Runnable executor, ObservableBooleanValue enabledBinding) {
         this.actionType = actionType;
         this.executor = executor;
-    }
 
-    public BooleanProperty enabledWritable() {
-        return enabled;
+        if (enabledBinding != null) {
+            this.enabled.bind(enabledBinding);
+        }
     }
 
     @Override
@@ -34,7 +35,7 @@ class FxAction<ActionType extends Enum<ActionType>> implements Action<ActionType
     }
 
     @Override
-    public void execute() throws ActionDisabledException {
+    public void execute() {
         if (!enabled.get()) {
             throw new ActionDisabledException(actionType.name());
         }

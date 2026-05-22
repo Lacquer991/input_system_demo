@@ -1,7 +1,8 @@
 package org.demo.input.action;
 
 import javafx.beans.property.ReadOnlyBooleanProperty;
-import org.demo.input.action.exceptions.ActionDisabledException;
+import javafx.beans.value.ObservableBooleanValue;
+
 
 public interface Action<ActionType extends Enum<ActionType>> {
 
@@ -13,5 +14,15 @@ public interface Action<ActionType extends Enum<ActionType>> {
         return enabledProperty().get();
     }
 
-    void execute() throws ActionDisabledException;
+    void execute();
+
+
+    static <ActionType extends Enum<ActionType>> Action<ActionType> of(ActionType actionType, Runnable executor) {
+        return new FxAction<>(actionType, executor, null);
+    }
+    
+    static <ActionType extends Enum<ActionType>> Action<ActionType> of(ActionType actionType, Runnable executor,
+                                            ObservableBooleanValue enabled) {
+        return new FxAction<>(actionType, executor, enabled);
+    }
 }

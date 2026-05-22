@@ -1,30 +1,25 @@
 package org.demo.input.action;
 
+import org.demo.input.action.spi.ActionManagerFactory;
 
-import org.demo.input.action.exceptions.ActionDisabledException;
-import org.demo.input.action.exceptions.ActionNotFoundException;
+import java.util.ServiceLoader;
 
-import java.util.Optional;
 
 public interface ActionManager<ActionType extends Enum<ActionType>> {
 
-    interface Layer<ActionType extends Enum<ActionType>> {
+    LayerHandle pushLayer(ActionLayer<ActionType> layer);
 
-        Optional<? extends Action<ActionType>> findAction(ActionType actionType);
+    Action<ActionType> getAction(ActionType type);
+
+    default void execute(ActionType type) {
+        getAction(type).execute();
     }
 
-    Action<ActionType> getAction(ActionType actionType) throws ActionNotFoundException;
-
-    void push(Layer<ActionType> layer);
-
-    Optional<Layer<ActionType>> pop();
-
-    Optional<Layer<ActionType>> peek();
-
-    void clear();
-
-    default void execute(ActionType actionType) throws ActionDisabledException {
-        getAction(actionType).execute();
+    static <ActionType extends Enum<ActionType>> ActionManager<ActionType> create() {
+        return ServiceLoader.load(ActionManagerFactory.class)
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException(
+                        "No ActionManagerFactory found on classpath"))
+                .create();
     }
-
 }
