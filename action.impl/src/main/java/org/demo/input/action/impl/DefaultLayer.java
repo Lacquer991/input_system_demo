@@ -1,12 +1,12 @@
 package org.demo.input.action.impl;
 
 import org.demo.input.action.Action;
-import org.demo.input.action.ActionManager;
+import org.demo.input.action.ActionLayer;
 
 import java.util.Map;
 import java.util.Optional;
 
-class DefaultLayer<ActionType extends Enum<ActionType>> implements ActionManager.Layer<ActionType> {
+class DefaultLayer<ActionType extends Enum<ActionType>> implements ActionLayer<ActionType> {
 
     private final Map<ActionType, Action<ActionType>> actions;
 
