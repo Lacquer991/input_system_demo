@@ -102,18 +102,18 @@ public class JavaFxTestApp extends Application {
     }
 
     private VBox buildControls(ActionManager<ActionType> manager) {
-        Button pushEditor = new Button("Добавить: second layer");
-        Button popEditor = new Button("Удалить: second layer");
+        Button pushEditor = new Button("Добавить второй слой");
+        Button popEditor = new Button("Удалить второй слой");
         popEditor.setDisable(true);
 
         pushEditor.setOnAction(e -> {
             if (editorHandle != null && editorHandle.isActive()) return;
             editorHandle = manager.pushLayer(ActionLayer.of(Map.of(
-                    ActionType.SAVE, Action.of(ActionType.SAVE, () -> log("ACTION [second] SAVE: сохранить документ")),
-                    ActionType.SAVE_AS, Action.of(ActionType.SAVE_AS, () -> log("ACTION [second] SAVE_AS: сохранить копию")),
-                    ActionType.DELETE, Action.of(ActionType.DELETE, () -> log("ACTION [second] DELETE: удалить выделенное"))
+                    ActionType.SAVE, Action.of(ActionType.SAVE, () -> log("ACTION [второй слой] SAVE: сохранить документ")),
+                    ActionType.SAVE_AS, Action.of(ActionType.SAVE_AS, () -> log("ACTION [второй слой] SAVE_AS: сохранить копию")),
+                    ActionType.DELETE, Action.of(ActionType.DELETE, () -> log("ACTION [второй слой] DELETE: удалить выделенное"))
             )));
-            log("Editor layer добавлен (SAVE/SAVE_AS/DELETE переопределены)");
+            log("Editor слой добавлен (SAVE/SAVE_AS/DELETE переопределены)");
             pushEditor.setDisable(true);
             popEditor.setDisable(false);
             updateStatus();
@@ -123,25 +123,25 @@ public class JavaFxTestApp extends Application {
             if (editorHandle != null) {
                 editorHandle.close();
                 editorHandle = null;
-                log("Editor layer удален (вернулись к base)");
+                log("Editor слой удален (вернулись к base)");
             }
             pushEditor.setDisable(false);
             popEditor.setDisable(true);
             updateStatus();
         });
 
-        Button pushDialog = new Button("Добавить: third layer");
-        Button popDialog = new Button("Удалить: third layer");
+        Button pushDialog = new Button("Добавить третий слой");
+        Button popDialog = new Button("Удалить третий слой");
         popDialog.setDisable(true);
 
         pushDialog.setOnAction(e -> {
             if (dialogHandle != null && dialogHandle.isActive()) return;
             dialogHandle = manager.pushLayer(ActionLayer.of(Map.of(
-                    ActionType.SAVE, Action.of(ActionType.SAVE, () -> log("ACTION [third] SAVE: подтвердить диалог")),
+                    ActionType.SAVE, Action.of(ActionType.SAVE, () -> log("ACTION [третий слой] SAVE: подтвердить диалог")),
                     ActionType.DELETE, Action.of(ActionType.DELETE, () -> {
                     }, new SimpleBooleanProperty(false))
             )));
-            log("third layer добавлен (SAVE = подтвердить, DELETE заблокирован)");
+            log("третий слой добавлен (SAVE = подтвердить, DELETE заблокирован)");
             pushDialog.setDisable(true);
             popDialog.setDisable(false);
             updateStatus();
@@ -151,7 +151,7 @@ public class JavaFxTestApp extends Application {
             if (dialogHandle != null) {
                 dialogHandle.close();
                 dialogHandle = null;
-                log("third layer удален");
+                log("третий слой удален");
             }
             pushDialog.setDisable(false);
             popDialog.setDisable(true);
@@ -174,8 +174,8 @@ public class JavaFxTestApp extends Application {
 
     private void updateStatus() {
         var sb = new StringBuilder("Активные слои: [base]");
-        if (editorHandle != null && editorHandle.isActive()) sb.append(" + [second]");
-        if (dialogHandle != null && dialogHandle.isActive()) sb.append(" + [third]");
+        if (editorHandle != null && editorHandle.isActive()) sb.append(" + [второй]");
+        if (dialogHandle != null && dialogHandle.isActive()) sb.append(" + [третий]");
         layerStatus.setText(sb.toString());
     }
 
