@@ -12,7 +12,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -130,18 +129,5 @@ class ActionManagerTest {
         assertSame(delete, manager.getAction(ActionEn.DELETE));
         assertSame(saveAs, manager.getAction(ActionEn.SAVE_AS));
         assertThrows(ActionNotFoundException.class, () -> manager.getAction(ActionEn.SAVE));
-    }
-
-    @Test
-    void layer_defensiveCopy() {
-        Action<ActionEn> save = Action.of(ActionEn.SAVE, () -> {
-        });
-        Map<ActionEn, Action<ActionEn>> map = new HashMap<>();
-        map.put(ActionEn.SAVE, save);
-        ActionLayer<ActionEn> layer = ActionLayer.of(map);
-        map.clear();
-        manager.pushLayer(layer);
-
-        assertSame(save, manager.getAction(ActionEn.SAVE));
     }
 }

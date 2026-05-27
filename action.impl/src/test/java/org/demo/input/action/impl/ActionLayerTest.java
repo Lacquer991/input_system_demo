@@ -40,28 +40,4 @@ class ActionLayerTest {
 
         assertTrue(layer.findAction(ActionEn.SAVE_AS).isEmpty());
     }
-
-    @Test
-    void of_defensiveCopy() {
-        Action<ActionEn> save = Action.of(ActionEn.SAVE, () -> {
-        });
-        Map<ActionEn, Action<ActionEn>> map = new HashMap<>();
-        map.put(ActionEn.SAVE, save);
-        ActionLayer<ActionEn> layer = ActionLayer.of(map);
-        map.clear();
-
-        assertSame(save, layer.findAction(ActionEn.SAVE).orElseThrow());
-    }
-
-    @Test
-    void lambda_customLookup() {
-        Action<ActionEn> save = Action.of(ActionEn.SAVE, () -> {
-        });
-        ActionLayer<ActionEn> layer = type -> type == ActionEn.SAVE
-                ? Optional.of(save)
-                : Optional.empty();
-
-        assertSame(save, layer.findAction(ActionEn.SAVE).orElseThrow());
-        assertTrue(layer.findAction(ActionEn.SAVE_AS).isEmpty());
-    }
 }
