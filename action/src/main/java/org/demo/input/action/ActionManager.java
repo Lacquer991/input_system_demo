@@ -15,6 +15,8 @@ public interface ActionManager<ActionType extends Enum<ActionType>> {
         getAction(type).execute();
     }
 
+    ActionManager<ActionType> createChild();
+
     static <ActionType extends Enum<ActionType>> ActionManager<ActionType> create() {
         return ServiceLoader.load(ActionManagerFactory.class)
                 .findFirst()

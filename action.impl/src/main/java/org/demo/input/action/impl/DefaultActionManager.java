@@ -14,6 +14,12 @@ final class DefaultActionManager<ActionType extends Enum<ActionType>>
 
     private final Deque<ActionLayer<ActionType>> layers = new ArrayDeque<>();
 
+    private final ActionManager<ActionType> parent;
+
+    DefaultActionManager(ActionManager<ActionType> parent) {
+        this.parent = parent;
+    }
+
     @Override
     public LayerHandle pushLayer(ActionLayer<ActionType> layer) {
         layers.push(layer);
@@ -22,16 +28,18 @@ final class DefaultActionManager<ActionType extends Enum<ActionType>>
     }
 
     @Override
+    public ActionManager<ActionType> createChild() {
+        return new DefaultActionManager<>(this);
+    }
+
+    @Override
     public Action<ActionType> getAction(ActionType type) {
         for (ActionLayer<ActionType> layer : layers) {
             var action = layer.findAction(type);
-            if (action.isPresent()) {
-                return action.get();
-            }
-            if (layer.isExclusive()) {
-                break;
-            }
+            if (action.isPresent()) return action.get();
+            if (layer.isExclusive()) break;
         }
+        if (parent != null) return parent.getAction(type);
         throw new ActionNotFoundException(type.name());
     }
 }

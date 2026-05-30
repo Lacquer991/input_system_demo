@@ -7,7 +7,6 @@ public final class DefaultActionManagerFactory implements ActionManagerFactory {
 
     @Override
     public <ActionType extends Enum<ActionType>> ActionManager<ActionType> create() {
-
-        return new DefaultActionManager<>();
+        return new DefaultActionManager<>(null);
     }
 }
