@@ -28,6 +28,9 @@ final class DefaultActionManager<ActionType extends Enum<ActionType>>
             if (action.isPresent()) {
                 return action.get();
             }
+            if (layer.isExclusive()) {
+                break;
+            }
         }
         throw new ActionNotFoundException(type.name());
     }
