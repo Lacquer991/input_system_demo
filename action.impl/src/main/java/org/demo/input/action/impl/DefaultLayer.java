@@ -15,7 +15,7 @@ class DefaultLayer<ActionType extends Enum<ActionType>> implements ActionLayer<A
     }
 
     @Override
-    public Optional<? extends Action<ActionType>> findAction(ActionType actionType) {
+    public Optional<Action<ActionType>> findAction(ActionType actionType) {
         return Optional.ofNullable(actions.get(actionType));
     }
 }
