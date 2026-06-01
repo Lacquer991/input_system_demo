@@ -4,6 +4,7 @@ import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.geometry.Insets;
+import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
@@ -37,11 +38,24 @@ public class JavaFxTestApp extends Application {
     private Disposable events;
     private ActionDispatcher dispatcher;
 
-    private LayerHandle editorHandle;
-    private LayerHandle dialogHandle;
+    private LayerHandle editorLayerHandle;
+    private LayerHandle dialogLayerHandle;
+
+    private ActionManager<ActionType> rootManager;
+    private ActionManager<ActionType> editorManager;
+    private ActionManager<ActionType> dialogManager;
+
+    private final SimpleBooleanProperty canDelete = new SimpleBooleanProperty(true);
 
     private TextArea log;
-    private Label layerStatus;
+    private Label hierarchyStatus;
+
+    private Button saveBtn;
+    private Button deleteBtn;
+    private Button pushEditor;
+    private Button popEditor;
+    private Button pushDialog;
+    private Button popDialog;
 
     @Override
     public void start(Stage stage) {
@@ -49,13 +63,13 @@ public class JavaFxTestApp extends Application {
         log.setEditable(false);
         log.setFocusTraversable(false);
 
-        layerStatus = new Label("Активные слои: [base]");
+        hierarchyStatus = new Label();
 
         BindingImplProvider provider = BindingServiceLocator.getBindingImplProvider();
         loop = Schedulers.newSingle("input-loop");
 
         BorderPane root = new BorderPane();
-        Scene scene = new Scene(root, 900, 600);
+        Scene scene = new Scene(root, 960, 640);
 
         KeyInputSource<KeyType> inputSource = new JavaFxKeyInputSource(scene);
         BindingService<ActionType> bindingService = provider.createBindingService();
@@ -73,25 +87,30 @@ public class JavaFxTestApp extends Application {
                 Bindings.createDouleTapBinding(ActionType.GO_TO_HOME_POINT, KeyType.H, Duration.ofMillis(200), Duration.ofMillis(300))
         ));
 
-        ActionManager<ActionType> manager = ActionManager.create();
-
-        manager.pushLayer(ActionLayer.of(Map.of(
-                ActionType.SAVE, Action.of(ActionType.SAVE, () -> log("ACTION [base] SAVE: глобальное сохранение")),
-                ActionType.SAVE_AS, Action.of(ActionType.SAVE_AS, () -> log("ACTION [base] SAVE_AS: сохранить как")),
-                ActionType.DELETE, Action.of(ActionType.DELETE, () -> log("ACTION [base] DELETE: удаление")),
-                ActionType.OPEN_MAP, Action.of(ActionType.OPEN_MAP, () -> log("ACTION [base] OPEN_MAP: открыта карта")),
-                ActionType.SELECT_HOME_POINT, Action.of(ActionType.SELECT_HOME_POINT, () -> log("ACTION [base] SELECT_HOME_POINT: точка выбрана")),
-                ActionType.GO_TO_HOME_POINT, Action.of(ActionType.GO_TO_HOME_POINT, () -> log("ACTION [base] GO_TO_HOME_POINT: переход домой"))
+        rootManager = ActionManager.create();
+        rootManager.pushLayer(ActionLayer.of(Map.of(
+                ActionType.OPEN_MAP, Action.of(ActionType.OPEN_MAP, () -> log("ACTION [root] OPEN_MAP")),
+                ActionType.SELECT_HOME_POINT, Action.of(ActionType.SELECT_HOME_POINT, () -> log("ACTION [root] SELECT_HOME_POINT")),
+                ActionType.GO_TO_HOME_POINT, Action.of(ActionType.GO_TO_HOME_POINT, () -> log("ACTION [root] GO_TO_HOME_POINT")),
+                ActionType.SAVE, Action.of(ActionType.SAVE, () -> log("ACTION [root] SAVE")),
+                ActionType.SAVE_AS, Action.of(ActionType.SAVE_AS, () -> log("ACTION [root] SAVE_AS")),
+                ActionType.DELETE, Action.of(ActionType.DELETE, () -> log("ACTION [root] DELETE"), canDelete)
         )));
+
+        editorManager = rootManager.createChild();
+        dialogManager = editorManager.createChild();
 
         dispatcher = ActionDispatcher.bind(
                 actionPublisher.getActionPublisher(),
-                manager,
+                rootManager,
                 true,
-                err -> log("ERROR: " + err.getMessage())
+                err -> {
+                    log("ERROR: " + err.getMessage());
+
+                }
         );
 
-        root.setTop(buildControls(manager));
+        root.setTop(buildControls());
         root.setCenter(log);
         root.setFocusTraversable(true);
 
@@ -99,60 +118,92 @@ public class JavaFxTestApp extends Application {
         stage.setTitle("InputJavaFxTestApp");
         stage.show();
         Platform.runLater(root::requestFocus);
+        updateStatus();
     }
 
-    private VBox buildControls(ActionManager<ActionType> manager) {
-        Button pushEditor = new Button("Добавить второй слой");
-        Button popEditor = new Button("Удалить второй слой");
+    private VBox buildControls() {
+        saveBtn = ActionUtils.createButton(rootManager.getAction(ActionType.SAVE), "Save (CTRL+S)");
+        deleteBtn = ActionUtils.createButton(rootManager.getAction(ActionType.DELETE), "Delete");
+        Button openMapBtn = ActionUtils.createButton(rootManager.getAction(ActionType.OPEN_MAP), "Open Map (M)");
+
+        Button toggleDeleteBtn = new Button("Toggle Delete enabled");
+        toggleDeleteBtn.setOnAction(e -> {
+            canDelete.set(!canDelete.get());
+            log("canDelete: " + canDelete.get());
+        });
+
+        HBox actionButtons = new HBox(8, saveBtn, deleteBtn, openMapBtn, toggleDeleteBtn);
+        actionButtons.setAlignment(Pos.CENTER_LEFT);
+
+        pushEditor = new Button("Push: editor layer");
+        popEditor = new Button("Pop: editor layer");
         popEditor.setDisable(true);
 
         pushEditor.setOnAction(e -> {
-            if (editorHandle != null && editorHandle.isActive()) return;
-            editorHandle = manager.pushLayer(ActionLayer.of(Map.of(
-                    ActionType.SAVE, Action.of(ActionType.SAVE, () -> log("ACTION [второй слой] SAVE: сохранить документ")),
-                    ActionType.SAVE_AS, Action.of(ActionType.SAVE_AS, () -> log("ACTION [второй слой] SAVE_AS: сохранить копию")),
-                    ActionType.DELETE, Action.of(ActionType.DELETE, () -> log("ACTION [второй слой] DELETE: удалить выделенное"))
+            if (editorLayerHandle != null && editorLayerHandle.isActive()) return;
+
+            editorLayerHandle = editorManager.pushLayer(ActionLayer.of(Map.of(
+                    ActionType.SAVE, Action.of(ActionType.SAVE, () -> log("ACTION [editor] SAVE")),
+                    ActionType.DELETE, Action.of(ActionType.DELETE, () -> log("ACTION [editor] DELETE"), canDelete)
             )));
-            log("Editor слой добавлен (SAVE/SAVE_AS/DELETE переопределены)");
+
+            ActionUtils.configure(rootManager.getAction(ActionType.SAVE), saveBtn);
+            ActionUtils.configure(rootManager.getAction(ActionType.DELETE), deleteBtn);
+
+            log("editor layer добавлен");
             pushEditor.setDisable(true);
             popEditor.setDisable(false);
             updateStatus();
         });
 
         popEditor.setOnAction(e -> {
-            if (editorHandle != null) {
-                editorHandle.close();
-                editorHandle = null;
-                log("Editor слой удален (вернулись к base)");
+            if (dialogLayerHandle != null && dialogLayerHandle.isActive()) {
+                dialogLayerHandle.close();
+                dialogLayerHandle = null;
+                pushDialog.setDisable(false);
+                popDialog.setDisable(true);
+                log("dialog layer снят (вместе с editor)");
             }
+            if (editorLayerHandle != null) {
+                editorLayerHandle.close();
+                editorLayerHandle = null;
+            }
+            ActionUtils.configure(rootManager.getAction(ActionType.SAVE), saveBtn);
+            ActionUtils.configure(rootManager.getAction(ActionType.DELETE), deleteBtn);
+
+            log("editor layer снят");
             pushEditor.setDisable(false);
             popEditor.setDisable(true);
             updateStatus();
         });
 
-        Button pushDialog = new Button("Добавить третий слой");
-        Button popDialog = new Button("Удалить третий слой");
+        pushDialog = new Button("Push: dialog layer");
+        popDialog = new Button("Pop: dialog layer");
         popDialog.setDisable(true);
 
         pushDialog.setOnAction(e -> {
-            if (dialogHandle != null && dialogHandle.isActive()) return;
-            dialogHandle = manager.pushLayer(ActionLayer.of(Map.of(
-                    ActionType.SAVE, Action.of(ActionType.SAVE, () -> log("ACTION [третий слой] SAVE: подтвердить диалог")),
-                    ActionType.DELETE, Action.of(ActionType.DELETE, () -> {
-                    }, new SimpleBooleanProperty(false))
+            if (dialogLayerHandle != null && dialogLayerHandle.isActive()) return;
+
+            dialogLayerHandle = dialogManager.pushLayer(ActionLayer.of(Map.of(
+                    ActionType.SAVE, Action.of(ActionType.SAVE, () -> log("ACTION [dialog] SAVE: подтвердить"))
             )));
-            log("третий слой добавлен (SAVE = подтвердить, DELETE заблокирован)");
+
+            ActionUtils.configure(rootManager.getAction(ActionType.SAVE), saveBtn);
+
+            log("dialog layer добавлен");
             pushDialog.setDisable(true);
             popDialog.setDisable(false);
             updateStatus();
         });
 
         popDialog.setOnAction(e -> {
-            if (dialogHandle != null) {
-                dialogHandle.close();
-                dialogHandle = null;
-                log("третий слой удален");
+            if (dialogLayerHandle != null) {
+                dialogLayerHandle.close();
+                dialogLayerHandle = null;
             }
+            ActionUtils.configure(rootManager.getAction(ActionType.SAVE), saveBtn);
+
+            log("dialog layer снят");
             pushDialog.setDisable(false);
             popDialog.setDisable(true);
             updateStatus();
@@ -161,22 +212,34 @@ public class JavaFxTestApp extends Application {
         Button clearLog = new Button("Очистить логи");
         clearLog.setOnAction(e -> log.clear());
 
-        HBox editorRow = new HBox(8, new Label("Second:"), pushEditor, popEditor);
-        HBox dialogRow = new HBox(8, new Label("Third:"), pushDialog, popDialog);
-        editorRow.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
-        dialogRow.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        HBox editorRow = new HBox(8, new Label("editorManager:"), pushEditor, popEditor);
+        HBox dialogRow = new HBox(8, new Label("dialogManager:"), pushDialog, popDialog);
+        editorRow.setAlignment(Pos.CENTER_LEFT);
+        dialogRow.setAlignment(Pos.CENTER_LEFT);
 
-        VBox controls = new VBox(6, layerStatus, editorRow, dialogRow, clearLog);
+        VBox controls = new VBox(8,
+                hierarchyStatus,
+                new Label(""),
+                actionButtons,
+                new Label(""),
+                editorRow,
+                dialogRow,
+                clearLog
+        );
         controls.setPadding(new Insets(10));
         controls.setStyle("-fx-border-color: #ccc; -fx-border-width: 0 0 1 0;");
         return controls;
     }
 
     private void updateStatus() {
-        var sb = new StringBuilder("Активные слои: [base]");
-        if (editorHandle != null && editorHandle.isActive()) sb.append(" + [второй]");
-        if (dialogHandle != null && dialogHandle.isActive()) sb.append(" + [третий]");
-        layerStatus.setText(sb.toString());
+        var sb = new StringBuilder("Current: root");
+        if (editorLayerHandle != null && editorLayerHandle.isActive()) {
+            sb.append(" -> editor");
+        }
+        if (dialogLayerHandle != null && dialogLayerHandle.isActive()) {
+            sb.append(" -> dialog");
+        }
+        hierarchyStatus.setText(sb.toString());
     }
 
     private void log(String msg) {
