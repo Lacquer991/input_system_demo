@@ -51,7 +51,7 @@ public class Application {
                     Bindings.createHoldBinding(ActionType.SAVE_AS, EnumSet.of(KeyType.CTRL, KeyType.S), HOLD_DURATION),
                     Bindings.createTapBinding(ActionType.OPEN_MAP, KeyType.M, TAP_DURATION),
                     Bindings.createTapBinding(ActionType.SELECT_HOME_POINT, KeyType.H, TAP_DURATION),
-                    Bindings.createDouleTapBinding(ActionType.GO_TO_HOME_POINT, KeyType.H, DOUBLE_TAP_DURATION, DOUBLE_TAP_INTERVAL)
+                    Bindings.createDoubleTapBinding(ActionType.GO_TO_HOME_POINT, KeyType.H, DOUBLE_TAP_DURATION, DOUBLE_TAP_INTERVAL)
             ));
 
             System.err.println("======CHORD CTRL+S ");
