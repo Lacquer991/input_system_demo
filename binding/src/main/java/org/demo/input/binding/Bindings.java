@@ -25,7 +25,7 @@ public class Bindings {
         };
     }
 
-    public static <A extends Enum<A>> Binding.DoubleTap<A> createDouleTapBinding(A actionType, Enum<?> keyType, Duration duration, Duration interval) {
+    public static <A extends Enum<A>> Binding.DoubleTap<A> createDoubleTapBinding(A actionType, Enum<?> keyType, Duration duration, Duration interval) {
         return new Binding.DoubleTap<>() {
             @Override
             public Enum<?> getKey() {

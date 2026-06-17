@@ -9,8 +9,6 @@ record ComboRule<ActionType extends Enum<ActionType>>(
         Set<Enum<?>> blockers,
         boolean exactMatch,
         Duration chordDelay,
-        ActionType chordAction,
-        ActionType holdAction,
-        Duration holdDuration
-) {
-}
+        ActionType action,
+        Duration duration
+) {}

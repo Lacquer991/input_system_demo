@@ -71,7 +71,7 @@ class ActionTest {
 
         e.setBindings(List.of(
                 Bindings.createTapBinding(Action.SELECT_HOME, Key.H, Duration.ofMillis(300)),
-                Bindings.createDouleTapBinding(Action.GO_HOME, Key.H, Duration.ofMillis(200), Duration.ofMillis(300))
+                Bindings.createDoubleTapBinding(Action.GO_HOME, Key.H, Duration.ofMillis(200), Duration.ofMillis(300))
         ));
 
         e.onEvent(ev(Key.H, KeyInputEventType.KEY_DOWN, 0));
@@ -91,7 +91,7 @@ class ActionTest {
 
         e.setBindings(List.of(
                 Bindings.createTapBinding(Action.SELECT_HOME, Key.H, Duration.ofMillis(300)),
-                Bindings.createDouleTapBinding(Action.GO_HOME, Key.H, Duration.ofMillis(200), Duration.ofMillis(300))
+                Bindings.createDoubleTapBinding(Action.GO_HOME, Key.H, Duration.ofMillis(200), Duration.ofMillis(300))
         ));
 
         e.onEvent(ev(Key.H, KeyInputEventType.KEY_DOWN, 0));
@@ -109,7 +109,7 @@ class ActionTest {
 
         e.setBindings(List.of(
                 Bindings.createTapBinding(Action.SELECT_HOME, Key.H, Duration.ofMillis(300)),
-                Bindings.createDouleTapBinding(Action.GO_HOME, Key.H, Duration.ofMillis(200), Duration.ofMillis(300))
+                Bindings.createDoubleTapBinding(Action.GO_HOME, Key.H, Duration.ofMillis(200), Duration.ofMillis(300))
         ));
 
         e.onEvent(ev(Key.H, KeyInputEventType.KEY_DOWN, 0));

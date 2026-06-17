@@ -12,21 +12,20 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
-class TapProcessor<ActionType extends Enum<ActionType>>
-        implements BindingProcessor<ActionType> {
+class TapProcessor<ActionType extends Enum<ActionType>> {
 
-    private static final class KeyState {
+    private final class KeyState {
         Instant downAt;
         boolean interrupted;
+        ActionType readyAction;
     }
 
     private final Map<Enum<?>, Binding.Tap<ActionType>> bindings = new HashMap<>();
     private final Map<Enum<?>, KeyState> states = new HashMap<>();
 
-    @Override
-    public void setBindings(List<Binding<ActionType>> bindings) {
-        this.bindings.clear();
+    void setBindings(List<Binding<ActionType>> bindings) {
         states.clear();
+        this.bindings.clear();
         for (Binding<ActionType> b : bindings) {
             if (b instanceof Binding.Tap<ActionType> tap) {
                 this.bindings.put(tap.getKey(), tap);
@@ -34,8 +33,7 @@ class TapProcessor<ActionType extends Enum<ActionType>>
         }
     }
 
-    @Override
-    public Optional<ActionType> onEvent(KeyInputEvent<?> event, Set<Enum<?>> pressed) {
+    void update(KeyInputEvent<?> event) {
         Enum<?> key = event.getKeyType();
 
         if (event.getEventType() == KeyInputEventType.KEY_DOWN) {
@@ -44,38 +42,56 @@ class TapProcessor<ActionType extends Enum<ActionType>>
                     entry.getValue().interrupted = true;
                 }
             }
-        }
-
-        if (!bindings.containsKey(key)) return Optional.empty();
-
-        if (event.getEventType() == KeyInputEventType.KEY_DOWN) {
-            KeyState state = states.computeIfAbsent(key, k -> new KeyState());
-            state.downAt = event.getTimestamp();
-            state.interrupted = false;
-            return Optional.empty();
+            if (bindings.containsKey(key)) {
+                KeyState s = states.computeIfAbsent(key, k -> new KeyState());
+                s.downAt = event.getTimestamp();
+                s.interrupted = false;
+                s.readyAction = null;
+            }
+            return;
         }
 
         KeyState state = states.get(key);
-        if (state == null || state.downAt == null) return Optional.empty();
-
-        Instant down = state.downAt;
-        state.downAt = null;
-
-        if (state.interrupted) {
-            state.interrupted = false;
-            return Optional.empty();
+        if (state == null || state.downAt == null || state.interrupted) {
+            if (state != null) {
+                state.downAt = null;
+                state.interrupted = false;
+            }
+            return;
         }
 
         Binding.Tap<ActionType> tap = bindings.get(key);
-        Duration duration = Duration.between(down, event.getTimestamp());
+        if (tap == null) return;
+
+        Duration duration = Duration.between(state.downAt, event.getTimestamp());
+        state.downAt = null;
         if (duration.compareTo(tap.getDuration()) <= 0) {
-            return Optional.of(tap.getActionType());
+            state.readyAction = tap.getActionType();
         }
-        return Optional.empty();
     }
 
-    @Override
-    public void dispose() {
+    Optional<ActionType> poll(Enum<?> key) {
+        KeyState state = states.get(key);
+        if (state == null || state.readyAction == null) return Optional.empty();
+        ActionType action = state.readyAction;
+        state.readyAction = null;
+        return Optional.of(action);
+    }
+
+    void consume(Enum<?> key) {
+        KeyState state = states.get(key);
+        if (state != null) {
+            state.downAt = null;
+            state.readyAction = null;
+            state.interrupted = false;
+        }
+    }
+
+    Set<Enum<?>> boundKeys() {
+        return bindings.keySet();
+    }
+
+    void dispose() {
         states.clear();
     }
 }

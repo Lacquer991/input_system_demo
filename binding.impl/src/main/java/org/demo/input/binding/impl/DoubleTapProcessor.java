@@ -14,23 +14,23 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
 
-class DoubleTapProcessor<ActionType extends Enum<ActionType>>
-        implements BindingProcessor<ActionType> {
+class DoubleTapProcessor<ActionType extends Enum<ActionType>> {
 
-    private static final class KeyState {
+    private final class KeyState {
         Instant downAt;
         Instant firstUpAt;
         Instant secondDownAt;
         boolean waitingSecondUp;
         Disposable timer;
+        ActionType readyAction;
+
+        boolean isPending() {
+            return firstUpAt != null || waitingSecondUp;
+        }
 
         void cancelTimer() {
-            if (timer != null) {
-                timer.dispose();
-                timer = null;
-            }
+            if (timer != null) { timer.dispose(); timer = null; }
         }
 
         void clearPending() {
@@ -39,29 +39,23 @@ class DoubleTapProcessor<ActionType extends Enum<ActionType>>
             secondDownAt = null;
             waitingSecondUp = false;
         }
-
-        boolean isPending() {
-            return firstUpAt != null || waitingSecondUp;
-        }
     }
 
     private final Scheduler scheduler;
-    private final Consumer<ActionType> emit;
-
+    private final Runnable onStateChanged;
     private final Map<Enum<?>, Binding.DoubleTap<ActionType>> bindings = new HashMap<>();
-    private final Map<Enum<?>, ActionType> pendingTapActions = new HashMap<>();
+    private final Map<Enum<?>, ActionType> conflictingTapActions = new HashMap<>();
     private final Map<Enum<?>, KeyState> states = new HashMap<>();
 
-    DoubleTapProcessor(Scheduler scheduler, Consumer<ActionType> emit) {
+    DoubleTapProcessor(Scheduler scheduler, Runnable onStateChanged) {
         this.scheduler = scheduler;
-        this.emit = emit;
+        this.onStateChanged = onStateChanged;
     }
 
-    @Override
-    public void setBindings(List<Binding<ActionType>> bindings) {
+    void setBindings(List<Binding<ActionType>> bindings) {
         dispose();
         this.bindings.clear();
-        this.pendingTapActions.clear();
+        this.conflictingTapActions.clear();
 
         Map<Enum<?>, ActionType> taps = new HashMap<>();
         for (Binding<ActionType> b : bindings) {
@@ -69,75 +63,77 @@ class DoubleTapProcessor<ActionType extends Enum<ActionType>>
                 taps.put(tap.getKey(), tap.getActionType());
             }
         }
-
         for (Binding<ActionType> b : bindings) {
             if (b instanceof Binding.DoubleTap<ActionType> dt) {
                 this.bindings.put(dt.getKey(), dt);
                 ActionType tapAction = taps.get(dt.getKey());
-                if (tapAction != null) {
-                    pendingTapActions.put(dt.getKey(), tapAction);
-                }
+                if (tapAction != null) conflictingTapActions.put(dt.getKey(), tapAction);
             }
         }
     }
 
-    @Override
-    public Optional<ActionType> onEvent(KeyInputEvent<?> event, Set<Enum<?>> pressed) {
+    Optional<ActionType> update(KeyInputEvent<?> event) {
         Enum<?> key = event.getKeyType();
-        if (!bindings.containsKey(key)) return Optional.empty();
-
         Binding.DoubleTap<ActionType> dt = bindings.get(key);
+        if (dt == null) return Optional.empty();
+
         KeyState state = states.computeIfAbsent(key, k -> new KeyState());
 
         if (event.getEventType() == KeyInputEventType.KEY_DOWN) {
-            return onDown(key, event.getTimestamp(), dt, state);
-        } else {
-            return onUp(key, event.getTimestamp(), dt, state);
-        }
-    }
-
-    private Optional<ActionType> onDown(Enum<?> key, Instant ts,
-                                        Binding.DoubleTap<ActionType> dt, KeyState state) {
-        if (state.firstUpAt != null && !state.waitingSecondUp) {
-            Duration gap = Duration.between(state.firstUpAt, ts);
-            if (!gap.isNegative() && gap.compareTo(dt.getInterval()) <= 0) {
-                state.waitingSecondUp = true;
-                state.secondDownAt = ts;
-                state.cancelTimer();
+            if (state.firstUpAt != null && !state.waitingSecondUp) {
+                Duration gap = Duration.between(state.firstUpAt, event.getTimestamp());
+                if (!gap.isNegative() && gap.compareTo(dt.getInterval()) <= 0) {
+                    state.cancelTimer();
+                    state.waitingSecondUp = true;
+                    state.secondDownAt = event.getTimestamp();
+                }
             }
+            state.downAt = event.getTimestamp();
+            return Optional.empty();
         }
-        state.downAt = ts;
-        return Optional.empty();
-    }
 
-    private Optional<ActionType> onUp(Enum<?> key, Instant ts,
-                                      Binding.DoubleTap<ActionType> dt, KeyState state) {
         if (state.downAt == null) return Optional.empty();
 
-        Duration duration = Duration.between(state.downAt, ts);
+        Duration pressDuration = Duration.between(state.downAt, event.getTimestamp());
         state.downAt = null;
-        boolean validDTap = duration.compareTo(dt.getDuration()) <= 0;
+        boolean validPress = pressDuration.compareTo(dt.getDuration()) <= 0;
 
         if (state.waitingSecondUp) {
             Duration interval = Duration.between(state.firstUpAt, state.secondDownAt);
             boolean validInterval = !interval.isNegative() && interval.compareTo(dt.getInterval()) <= 0;
             state.clearPending();
-            if (validInterval && validDTap) {
+            if (validInterval && validPress) {
                 return Optional.of(dt.getActionType());
             }
+
+            ActionType fallback = conflictingTapActions.get(key);
+            if (fallback != null) {
+                state.readyAction = fallback;
+                onStateChanged.run();
+            }
+
             return Optional.empty();
         }
 
-        if (validDTap) {
-            state.firstUpAt = ts;
+        if (validPress) {
+            state.firstUpAt = event.getTimestamp();
             state.cancelTimer();
             state.timer = scheduler.schedule(() -> {
                 state.firstUpAt = null;
-                ActionType tapAction = pendingTapActions.get(key);
-                if (tapAction != null) emit.accept(tapAction);
+                state.readyAction = conflictingTapActions.get(key);
+                onStateChanged.run();
             }, dt.getInterval().toMillis(), TimeUnit.MILLISECONDS);
         }
+
         return Optional.empty();
+    }
+
+    Optional<ActionType> poll(Enum<?> key) {
+        KeyState state = states.get(key);
+        if (state == null || state.readyAction == null) return Optional.empty();
+        ActionType action = state.readyAction;
+        state.readyAction = null;
+        return Optional.of(action);
     }
 
     boolean isPending(Enum<?> key) {
@@ -145,8 +141,11 @@ class DoubleTapProcessor<ActionType extends Enum<ActionType>>
         return state != null && state.isPending();
     }
 
-    @Override
-    public void dispose() {
+    Set<Enum<?>> boundKeys() {
+        return bindings.keySet();
+    }
+
+    void dispose() {
         states.values().forEach(KeyState::cancelTimer);
         states.clear();
     }
