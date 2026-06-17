@@ -3,18 +3,21 @@ package org.demo.input.action;
 import java.util.Map;
 import java.util.Optional;
 
-
-@FunctionalInterface
 public interface ActionLayer<ActionType extends Enum<ActionType>> {
 
     Optional<Action<ActionType>> findAction(ActionType type);
+
+    default boolean isExclusive() {
+        return false;
+    }
 
     static <ActionType extends Enum<ActionType>> ActionLayer<ActionType> of(Map<ActionType, Action<ActionType>> actions) {
         return of(actions, false);
     }
 
     static <ActionType extends Enum<ActionType>> ActionLayer<ActionType> of(Map<ActionType, Action<ActionType>> actions, boolean exclusive) {
-        var copy = Map.copyOf(actions);
+        Map<ActionType, Action<ActionType>> copy = Map.copyOf(actions);
+
         return new ActionLayer<>() {
             @Override
             public Optional<Action<ActionType>> findAction(ActionType type) {
@@ -26,9 +29,5 @@ public interface ActionLayer<ActionType extends Enum<ActionType>> {
                 return exclusive;
             }
         };
-    }
-
-    default boolean isExclusive() {
-        return false;
     }
 }

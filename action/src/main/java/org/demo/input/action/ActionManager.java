@@ -1,13 +1,17 @@
 package org.demo.input.action;
 
-import org.demo.input.action.spi.ActionManagerFactory;
-
-import java.util.ServiceLoader;
-
+import javafx.scene.Node;
+import javafx.scene.Scene;
+import org.demo.input.action.spi.ActionFactory;
 
 public interface ActionManager<ActionType extends Enum<ActionType>> {
 
-    LayerHandle pushLayer(ActionLayer<ActionType> layer);
+
+    LayerHandle register(Node node, ActionLayer<ActionType> layer);
+
+    LayerHandle pushTransient(ActionLayer<ActionType> layer);
+
+    void bindScene(Scene scene);
 
     Action<ActionType> getAction(ActionType type);
 
@@ -15,13 +19,7 @@ public interface ActionManager<ActionType extends Enum<ActionType>> {
         getAction(type).execute();
     }
 
-    ActionManager<ActionType> createChild();
-
     static <ActionType extends Enum<ActionType>> ActionManager<ActionType> create() {
-        return ServiceLoader.load(ActionManagerFactory.class)
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException(
-                        "No ActionManagerFactory found on classpath"))
-                .create();
+        return ActionFactory.getInstance().createManager();
     }
 }
