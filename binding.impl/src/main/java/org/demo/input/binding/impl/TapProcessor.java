@@ -12,86 +12,63 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
-class TapProcessor<ActionType extends Enum<ActionType>> {
-
-    private final class KeyState {
-        Instant downAt;
-        boolean interrupted;
-        ActionType readyAction;
-    }
+class TapProcessor<ActionType extends Enum<ActionType>> implements BindingProcessor<ActionType> {
 
     private final Map<Enum<?>, Binding.Tap<ActionType>> bindings = new HashMap<>();
-    private final Map<Enum<?>, KeyState> states = new HashMap<>();
+    private Enum<?> activeKey;
+    private Instant startedAt;
+    private ProcessorState<ActionType> currentState;
 
     void setBindings(List<Binding<ActionType>> bindings) {
-        states.clear();
+        reset();
         this.bindings.clear();
-        for (Binding<ActionType> b : bindings) {
-            if (b instanceof Binding.Tap<ActionType> tap) {
+        for (Binding<ActionType> binding : bindings) {
+            if (binding instanceof Binding.Tap<ActionType> tap) {
                 this.bindings.put(tap.getKey(), tap);
             }
         }
     }
 
-    void update(KeyInputEvent<?> event) {
+    @Override
+    public void update(KeyInputEvent<?> event, Set<Enum<?>> pressedKeys, long nowMillis) {
         Enum<?> key = event.getKeyType();
 
         if (event.getEventType() == KeyInputEventType.KEY_DOWN) {
-            for (var entry : states.entrySet()) {
-                if (!entry.getKey().equals(key) && entry.getValue().downAt != null) {
-                    entry.getValue().interrupted = true;
-                }
-            }
-            if (bindings.containsKey(key)) {
-                KeyState s = states.computeIfAbsent(key, k -> new KeyState());
-                s.downAt = event.getTimestamp();
-                s.interrupted = false;
-                s.readyAction = null;
+            if (activeKey != null && !activeKey.equals(key)) clearActivePress();
+            if (bindings.containsKey(key) && pressedKeys.equals(Set.of(key))) {
+                activeKey = key;
+                startedAt = event.getTimestamp();
             }
             return;
         }
 
-        KeyState state = states.get(key);
-        if (state == null || state.downAt == null || state.interrupted) {
-            if (state != null) {
-                state.downAt = null;
-                state.interrupted = false;
-            }
-            return;
-        }
+        if (!key.equals(activeKey)) return;
 
+        Instant downAt = startedAt;
+        clearActivePress();
         Binding.Tap<ActionType> tap = bindings.get(key);
-        if (tap == null) return;
+        if (downAt == null || tap == null) return;
 
-        Duration duration = Duration.between(state.downAt, event.getTimestamp());
-        state.downAt = null;
-        if (duration.compareTo(tap.getDuration()) <= 0) {
-            state.readyAction = tap.getActionType();
+        Duration duration = Duration.between(downAt, event.getTimestamp());
+        if (!duration.isNegative() && duration.compareTo(tap.getDuration()) <= 0 && currentState == null) {
+            currentState = new ProcessorState<>(ProcessorState.Phase.READY,
+                    tap.getActionType(), Set.of(key), nowMillis);
         }
     }
 
-    Optional<ActionType> poll(Enum<?> key) {
-        KeyState state = states.get(key);
-        if (state == null || state.readyAction == null) return Optional.empty();
-        ActionType action = state.readyAction;
-        state.readyAction = null;
-        return Optional.of(action);
+    @Override
+    public Optional<ProcessorState<ActionType>> getCurrentState() {
+        return Optional.ofNullable(currentState);
     }
 
-    void consume(Enum<?> key) {
-        KeyState state = states.get(key);
-        if (state != null) {
-            state.downAt = null;
-            state.readyAction = null;
-            state.interrupted = false;
-        }
+    @Override
+    public void reset() {
+        clearActivePress();
+        currentState = null;
     }
 
-    Set<Enum<?>> boundKeys() {
-        return bindings.keySet();
-    }
-
-    void dispose() {
-        states.clear();
+    private void clearActivePress() {
+        activeKey = null;
+        startedAt = null;
     }
 }

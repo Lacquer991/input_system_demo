@@ -5,9 +5,7 @@ import java.util.Set;
 
 record ComboRule<ActionType extends Enum<ActionType>>(
         Set<Enum<?>> requiredKeys,
-        Set<Enum<?>> observedKeys,
         Set<Enum<?>> blockers,
-        boolean exactMatch,
         Duration chordDelay,
         ActionType action,
         Duration duration

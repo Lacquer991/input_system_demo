@@ -3,8 +3,6 @@ package org.demo.input.binding.impl;
 import org.demo.input.binding.Binding;
 import org.demo.input.source.KeyInputEvent;
 import org.demo.input.source.KeyInputEventType;
-import reactor.core.Disposable;
-import reactor.core.scheduler.Scheduler;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -13,140 +11,88 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
-class DoubleTapProcessor<ActionType extends Enum<ActionType>> {
+class DoubleTapProcessor<ActionType extends Enum<ActionType>> implements BindingProcessor<ActionType> {
 
-    private final class KeyState {
-        Instant downAt;
-        Instant firstUpAt;
-        Instant secondDownAt;
-        boolean waitingSecondUp;
-        Disposable timer;
-        ActionType readyAction;
-
-        boolean isPending() {
-            return firstUpAt != null || waitingSecondUp;
-        }
-
-        void cancelTimer() {
-            if (timer != null) { timer.dispose(); timer = null; }
-        }
-
-        void clearPending() {
-            cancelTimer();
-            firstUpAt = null;
-            secondDownAt = null;
-            waitingSecondUp = false;
-        }
-    }
-
-    private final Scheduler scheduler;
-    private final Runnable onStateChanged;
     private final Map<Enum<?>, Binding.DoubleTap<ActionType>> bindings = new HashMap<>();
-    private final Map<Enum<?>, ActionType> conflictingTapActions = new HashMap<>();
-    private final Map<Enum<?>, KeyState> states = new HashMap<>();
-
-    DoubleTapProcessor(Scheduler scheduler, Runnable onStateChanged) {
-        this.scheduler = scheduler;
-        this.onStateChanged = onStateChanged;
-    }
+    private final Map<Enum<?>, Instant> startedAt = new HashMap<>();
+    private ProcessorState<ActionType> currentState;
+    private Instant firstUpAt;
 
     void setBindings(List<Binding<ActionType>> bindings) {
-        dispose();
+        reset();
         this.bindings.clear();
-        this.conflictingTapActions.clear();
-
-        Map<Enum<?>, ActionType> taps = new HashMap<>();
-        for (Binding<ActionType> b : bindings) {
-            if (b instanceof Binding.Tap<ActionType> tap) {
-                taps.put(tap.getKey(), tap.getActionType());
-            }
-        }
-        for (Binding<ActionType> b : bindings) {
-            if (b instanceof Binding.DoubleTap<ActionType> dt) {
-                this.bindings.put(dt.getKey(), dt);
-                ActionType tapAction = taps.get(dt.getKey());
-                if (tapAction != null) conflictingTapActions.put(dt.getKey(), tapAction);
+        for (Binding<ActionType> binding : bindings) {
+            if (binding instanceof Binding.DoubleTap<ActionType> doubleTap) {
+                this.bindings.put(doubleTap.getKey(), doubleTap);
             }
         }
     }
 
-    Optional<ActionType> update(KeyInputEvent<?> event) {
+    @Override
+    public void update(KeyInputEvent<?> event, Set<Enum<?>> pressedKeys, long nowMillis) {
         Enum<?> key = event.getKeyType();
-        Binding.DoubleTap<ActionType> dt = bindings.get(key);
-        if (dt == null) return Optional.empty();
+        Binding.DoubleTap<ActionType> binding = bindings.get(key);
+        if (binding == null) return;
 
-        KeyState state = states.computeIfAbsent(key, k -> new KeyState());
+        expire(nowMillis);
 
         if (event.getEventType() == KeyInputEventType.KEY_DOWN) {
-            if (state.firstUpAt != null && !state.waitingSecondUp) {
-                Duration gap = Duration.between(state.firstUpAt, event.getTimestamp());
-                if (!gap.isNegative() && gap.compareTo(dt.getInterval()) <= 0) {
-                    state.cancelTimer();
-                    state.waitingSecondUp = true;
-                    state.secondDownAt = event.getTimestamp();
+            startedAt.put(key, event.getTimestamp());
+            if (isWaitingFor(key)) {
+                Duration interval = Duration.between(firstUpAt, event.getTimestamp());
+                if (!interval.isNegative() && interval.compareTo(binding.getInterval()) <= 0) {
+                    currentState = new ProcessorState<>(ProcessorState.Phase.ACTIVE,
+                            binding.getActionType(), Set.of(key), currentState.readyAtMillis());
+                } else {
+                    currentState = null;
+                    firstUpAt = null;
                 }
             }
-            state.downAt = event.getTimestamp();
-            return Optional.empty();
+            return;
         }
 
-        if (state.downAt == null) return Optional.empty();
+        Instant downAt = startedAt.remove(key);
+        if (downAt == null) return;
 
-        Duration pressDuration = Duration.between(state.downAt, event.getTimestamp());
-        state.downAt = null;
-        boolean validPress = pressDuration.compareTo(dt.getDuration()) <= 0;
+        Duration pressDuration = Duration.between(downAt, event.getTimestamp());
+        boolean validPress = !pressDuration.isNegative() && pressDuration.compareTo(binding.getDuration()) <= 0;
 
-        if (state.waitingSecondUp) {
-            Duration interval = Duration.between(state.firstUpAt, state.secondDownAt);
-            boolean validInterval = !interval.isNegative() && interval.compareTo(dt.getInterval()) <= 0;
-            state.clearPending();
-            if (validInterval && validPress) {
-                return Optional.of(dt.getActionType());
-            }
-
-            ActionType fallback = conflictingTapActions.get(key);
-            if (fallback != null) {
-                state.readyAction = fallback;
-                onStateChanged.run();
-            }
-
-            return Optional.empty();
+        if (isSecondPressFor(key)) {
+            currentState = validPress ? new ProcessorState<>(ProcessorState.Phase.READY,
+                    binding.getActionType(), Set.of(key), nowMillis) : null;
+            firstUpAt = null;
+        } else if (validPress) {
+            firstUpAt = event.getTimestamp();
+            currentState = new ProcessorState<>(ProcessorState.Phase.WAITING,
+                    binding.getActionType(), Set.of(key), nowMillis + binding.getInterval().toMillis());
         }
+    }
 
-        if (validPress) {
-            state.firstUpAt = event.getTimestamp();
-            state.cancelTimer();
-            state.timer = scheduler.schedule(() -> {
-                state.firstUpAt = null;
-                state.readyAction = conflictingTapActions.get(key);
-                onStateChanged.run();
-            }, dt.getInterval().toMillis(), TimeUnit.MILLISECONDS);
+    void expire(long nowMillis) {
+        if (currentState != null && currentState.phase() == ProcessorState.Phase.WAITING && nowMillis >= currentState.readyAtMillis()) {
+            currentState = null;
+            firstUpAt = null;
         }
-
-        return Optional.empty();
     }
 
-    Optional<ActionType> poll(Enum<?> key) {
-        KeyState state = states.get(key);
-        if (state == null || state.readyAction == null) return Optional.empty();
-        ActionType action = state.readyAction;
-        state.readyAction = null;
-        return Optional.of(action);
+    private boolean isWaitingFor(Enum<?> key) {
+        return currentState != null && currentState.phase() == ProcessorState.Phase.WAITING && currentState.keys().contains(key);
     }
 
-    boolean isPending(Enum<?> key) {
-        KeyState state = states.get(key);
-        return state != null && state.isPending();
+    private boolean isSecondPressFor(Enum<?> key) {
+        return currentState != null && currentState.phase() == ProcessorState.Phase.ACTIVE && currentState.keys().contains(key);
     }
 
-    Set<Enum<?>> boundKeys() {
-        return bindings.keySet();
+    @Override
+    public Optional<ProcessorState<ActionType>> getCurrentState() {
+        return Optional.ofNullable(currentState);
     }
 
-    void dispose() {
-        states.values().forEach(KeyState::cancelTimer);
-        states.clear();
+    @Override
+    public void reset() {
+        startedAt.clear();
+        currentState = null;
+        firstUpAt = null;
     }
 }

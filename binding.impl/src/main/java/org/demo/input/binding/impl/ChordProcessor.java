@@ -2,128 +2,66 @@ package org.demo.input.binding.impl;
 
 import org.demo.input.source.KeyInputEvent;
 import org.demo.input.source.KeyInputEventType;
-import reactor.core.Disposable;
-import reactor.core.scheduler.Scheduler;
 
-import java.util.HashMap;
+import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
-class ChordProcessor<ActionType extends Enum<ActionType>> {
+class ChordProcessor<ActionType extends Enum<ActionType>> implements BindingProcessor<ActionType> {
 
-    private static final class RuleState {
-        boolean active;
-        boolean readyToEmit;
-        boolean released;
-        Disposable delayTimer;
-
-        void cancelTimer() {
-            if (delayTimer != null) { delayTimer.dispose(); delayTimer = null; }
-        }
-    }
-
-    private final Set<Enum<?>> pressed;
-    private final Scheduler scheduler;
-    private final Runnable onStateChanged;
-    private final Map<Set<Enum<?>>, ComboRule<ActionType>> rules = new HashMap<>();
-    private final Map<Set<Enum<?>>, RuleState> states = new HashMap<>();
-
-    ChordProcessor(Set<Enum<?>> pressed, Scheduler scheduler, Runnable onStateChanged) {
-        this.pressed = pressed;
-        this.scheduler = scheduler;
-        this.onStateChanged = onStateChanged;
-    }
+    private List<ComboRule<ActionType>> rules = List.of();
+    private ProcessorState<ActionType> currentState;
 
     void setRules(List<ComboRule<ActionType>> rules) {
-        dispose();
-        this.rules.clear();
-        this.states.clear();
-        for (ComboRule<ActionType> rule : rules) {
-            this.rules.put(rule.requiredKeys(), rule);
-            this.states.put(rule.requiredKeys(), new RuleState());
+        reset();
+        this.rules = rules.stream()
+                .sorted(Comparator.comparingInt(
+                        (ComboRule<ActionType> rule) -> rule.requiredKeys().size()).reversed())
+                .toList();
+    }
+
+    @Override
+    public void update(KeyInputEvent<?> event, Set<Enum<?>> pressedKeys, long nowMillis) {
+        if (currentState != null && currentState.isReady()) return;
+
+        Optional<ComboRule<ActionType>> match = findMatch(pressedKeys);
+
+        if (currentState != null && match.isPresent() && currentState.keys().equals(match.get().requiredKeys())) {
+            return;
         }
-    }
 
-    void update(KeyInputEvent<?> event) {
-        boolean isDown = event.getEventType() == KeyInputEventType.KEY_DOWN;
-
-        for (var entry : rules.entrySet()) {
-            Set<Enum<?>> keySet = entry.getKey();
-            ComboRule<ActionType> rule = entry.getValue();
-            RuleState state = states.get(keySet);
-
-            if (isDown) {
-                if (state.active && rule.blockers().contains(event.getKeyType())) {
-                    state.cancelTimer();
-                    state.active = false;
-                    state.readyToEmit = false;
-                    state.released = false;
-                    continue;
-                }
-
-                if (!state.active && isActive(rule)) {
-                    state.active = true;
-                    state.readyToEmit = false;
-                    state.released = false;
-                    state.cancelTimer();
-
-                    if (rule.chordDelay().isZero()) {
-                        state.readyToEmit = true;
-                        onStateChanged.run();
-                    } else {
-                        state.delayTimer = scheduler.schedule(() -> {
-                            if (state.active) {
-                                state.readyToEmit = true;
-                                onStateChanged.run();
-                            }
-                        }, rule.chordDelay().toMillis(), TimeUnit.MILLISECONDS);
-                    }
-                }
-            } else {
-                if (state.active && !isActive(rule)) {
-                    state.active = false;
-                    state.cancelTimer();
-                    state.released = true;
-                    state.readyToEmit = true;
-                    onStateChanged.run();
-                }
-            }
+        if (currentState != null && event.getEventType() == KeyInputEventType.KEY_UP && currentState.keys().contains(event.getKeyType())) {
+            currentState = new ProcessorState<>(ProcessorState.Phase.READY,
+                    currentState.action(), currentState.keys(), nowMillis);
+            return;
         }
+
+        currentState = match.map(rule ->
+                new ProcessorState<>(ProcessorState.Phase.ACTIVE, rule.action(), rule.requiredKeys(),
+                        nowMillis + rule.chordDelay().toMillis())).orElse(null);
     }
 
-    boolean isReadyToEmit(Set<Enum<?>> keySet) {
-        RuleState state = states.get(keySet);
-        return state != null && state.readyToEmit;
+    private Optional<ComboRule<ActionType>> findMatch(Set<Enum<?>> pressedKeys) {
+        return rules.stream()
+                .filter(rule -> isActive(rule, pressedKeys))
+                .findFirst();
     }
 
-    boolean isReleased(Set<Enum<?>> keySet) {
-        RuleState state = states.get(keySet);
-        return state != null && state.released;
+    private boolean isActive(ComboRule<ActionType> rule, Set<Enum<?>> pressedKeys) {
+        if (!pressedKeys.containsAll(rule.requiredKeys())) {
+            return false;
+        }
+        return rule.blockers().stream().noneMatch(pressedKeys::contains);
     }
 
-    ActionType consumeAction(Set<Enum<?>> keySet) {
-        RuleState state = states.get(keySet);
-        if (state == null) return null;
-        state.readyToEmit = false;
-        state.released = false;
-        state.active = false;
-        return rules.get(keySet).action();
+    @Override
+    public Optional<ProcessorState<ActionType>> getCurrentState() {
+        return Optional.ofNullable(currentState);
     }
 
-    Set<Set<Enum<?>>> keySets() {
-        return rules.keySet();
-    }
-
-    private boolean isActive(ComboRule<ActionType> rule) {
-        if (!pressed.containsAll(rule.requiredKeys())) return false;
-        if (!rule.exactMatch()) return true;
-        return rule.observedKeys().stream().filter(pressed::contains).count() == rule.requiredKeys().size();
-    }
-
-    void dispose() {
-        states.values().forEach(RuleState::cancelTimer);
-        states.clear();
+    @Override
+    public void reset() {
+        currentState = null;
     }
 }
