@@ -12,13 +12,15 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class ActionTest {
 
-    enum Key { CTRL, S, Q, M, H, X }
-    enum Action { SAVE, SAVE_AS, DELETE, OPEN_MAP, SELECT_HOME, GO_HOME }
+    enum Key {CTRL, S, Q, M, H, X}
+
+    enum Action {SAVE, SAVE_AS, DELETE, OPEN_MAP, SELECT_HOME, GO_HOME}
 
     private final VirtualTimeScheduler vts = VirtualTimeScheduler.create();
 
@@ -30,10 +32,25 @@ class ActionTest {
     private static KeyInputEvent<Key> ev(Key key, KeyInputEventType type, long ms) {
         Instant t = Instant.EPOCH.plusMillis(ms);
         return new KeyInputEvent<>() {
-            @Override public Key getKeyType() { return key; }
-            @Override public KeyInputEventType getEventType() { return type; }
-            @Override public Instant getTimestamp() { return t; }
-            @Override public String toString() { return "Ev(" + key + "," + type + "," + ms + ")"; }
+            @Override
+            public Key getKeyType() {
+                return key;
+            }
+
+            @Override
+            public KeyInputEventType getEventType() {
+                return type;
+            }
+
+            @Override
+            public Instant getTimestamp() {
+                return t;
+            }
+
+            @Override
+            public String toString() {
+                return "Ev(" + key + "," + type + "," + ms + ")";
+            }
         };
     }
 
@@ -60,6 +77,22 @@ class ActionTest {
         e.onEvent(ev(Key.M, KeyInputEventType.KEY_DOWN, 0));
         e.onEvent(ev(Key.CTRL, KeyInputEventType.KEY_DOWN, 10));
         e.onEvent(ev(Key.M, KeyInputEventType.KEY_UP, 50));
+
+        assertTrue(out.isEmpty());
+    }
+
+    @Test
+    void tap_does_not_start_when_another_key_is_already_pressed() {
+        List<Action> out = new ArrayList<>();
+        var e = new InputEngine<Action, Key>(out::add, vts);
+
+        e.setBindings(List.of(Bindings.createTapBinding(
+                Action.OPEN_MAP, Key.M, Duration.ofMillis(300))));
+
+        e.onEvent(ev(Key.CTRL, KeyInputEventType.KEY_DOWN, 0));
+        e.onEvent(ev(Key.M, KeyInputEventType.KEY_DOWN, 10));
+        e.onEvent(ev(Key.M, KeyInputEventType.KEY_UP, 50));
+        e.onEvent(ev(Key.CTRL, KeyInputEventType.KEY_UP, 60));
 
         assertTrue(out.isEmpty());
     }
@@ -327,5 +360,102 @@ class ActionTest {
         vts.advanceTimeBy(Duration.ofMillis(1000));
 
         assertTrue(out.isEmpty());
+    }
+
+    @Test
+    void single_key_hold_consumes_tap() {
+        List<Action> out = new ArrayList<>();
+        var e = new InputEngine<Action, Key>(out::add, vts);
+
+        e.setBindings(List.of(
+                Bindings.createTapBinding(Action.SELECT_HOME, Key.H, Duration.ofMillis(1000)),
+                Bindings.createHoldBinding(Action.GO_HOME, EnumSet.of(Key.H), Duration.ofMillis(500))
+        ));
+
+        e.onEvent(ev(Key.H, KeyInputEventType.KEY_DOWN, 0));
+        vts.advanceTimeBy(Duration.ofMillis(500));
+        e.onEvent(ev(Key.H, KeyInputEventType.KEY_UP, 600));
+
+        assertEquals(List.of(Action.GO_HOME), out);
+    }
+
+    @Test
+    void single_key_chord_consumes_tap() {
+        List<Action> out = new ArrayList<>();
+        var e = new InputEngine<Action, Key>(out::add, vts);
+
+        e.setBindings(List.of(
+                Bindings.createTapBinding(Action.SELECT_HOME, Key.H, Duration.ofMillis(300)),
+                Bindings.createChordBinding(Action.GO_HOME, EnumSet.of(Key.H))
+        ));
+
+        e.onEvent(ev(Key.H, KeyInputEventType.KEY_DOWN, 0));
+        e.onEvent(ev(Key.H, KeyInputEventType.KEY_UP, 50));
+
+        assertEquals(List.of(Action.GO_HOME), out);
+    }
+
+    @Test
+    void tap_rejects_reversed_timestamps() {
+        List<Action> out = new ArrayList<>();
+        var e = new InputEngine<Action, Key>(out::add, vts);
+        e.setBindings(List.of(Bindings.createTapBinding(
+                Action.SELECT_HOME, Key.H, Duration.ofMillis(300))));
+
+        e.onEvent(ev(Key.H, KeyInputEventType.KEY_DOWN, 100));
+        e.onEvent(ev(Key.H, KeyInputEventType.KEY_UP, 50));
+
+        assertTrue(out.isEmpty());
+    }
+
+    @Test
+    void double_tap_rejects_event_interval_over_limit() {
+        List<Action> out = new ArrayList<>();
+        var e = new InputEngine<Action, Key>(out::add, vts);
+        e.setBindings(List.of(
+                Bindings.createTapBinding(Action.SELECT_HOME, Key.H, Duration.ofMillis(300)),
+                Bindings.createDoubleTapBinding(Action.GO_HOME, Key.H,
+                        Duration.ofMillis(200), Duration.ofMillis(300))
+        ));
+
+        e.onEvent(ev(Key.H, KeyInputEventType.KEY_DOWN, 0));
+        e.onEvent(ev(Key.H, KeyInputEventType.KEY_UP, 50));
+        e.onEvent(ev(Key.H, KeyInputEventType.KEY_DOWN, 500));
+        e.onEvent(ev(Key.H, KeyInputEventType.KEY_UP, 550));
+
+        assertEquals(List.of(Action.SELECT_HOME), out);
+    }
+
+    @Test
+    void chord_with_equal_size_uses_binding_order() {
+        List<Action> out = new ArrayList<>();
+        var e = new InputEngine<Action, Key>(out::add, vts);
+        e.setBindings(List.of(
+                Bindings.createChordBinding(Action.SAVE, EnumSet.of(Key.CTRL, Key.S)),
+                Bindings.createChordBinding(Action.DELETE, EnumSet.of(Key.CTRL, Key.Q))
+        ));
+
+        e.onEvent(ev(Key.S, KeyInputEventType.KEY_DOWN, 0));
+        e.onEvent(ev(Key.Q, KeyInputEventType.KEY_DOWN, 10));
+        e.onEvent(ev(Key.CTRL, KeyInputEventType.KEY_DOWN, 20));
+
+        assertEquals(List.of(Action.SAVE), out);
+    }
+
+    @Test
+    void hold_with_equal_size_uses_binding_order() {
+        List<Action> out = new ArrayList<>();
+        var e = new InputEngine<Action, Key>(out::add, vts);
+        e.setBindings(List.of(
+                Bindings.createHoldBinding(Action.SAVE_AS, EnumSet.of(Key.CTRL, Key.S), Duration.ofMillis(500)),
+                Bindings.createHoldBinding(Action.DELETE, EnumSet.of(Key.CTRL, Key.Q), Duration.ofMillis(500))
+        ));
+
+        e.onEvent(ev(Key.S, KeyInputEventType.KEY_DOWN, 0));
+        e.onEvent(ev(Key.Q, KeyInputEventType.KEY_DOWN, 10));
+        e.onEvent(ev(Key.CTRL, KeyInputEventType.KEY_DOWN, 20));
+        vts.advanceTimeBy(Duration.ofMillis(500));
+
+        assertEquals(List.of(Action.SAVE_AS), out);
     }
 }
