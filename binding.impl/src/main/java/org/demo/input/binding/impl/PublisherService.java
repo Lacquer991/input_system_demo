@@ -15,6 +15,8 @@ class PublisherService<ActionType extends Enum<ActionType>, KeyType extends Enum
 
     private final Sinks.Many<ActionType> actions = Sinks.many().multicast().onBackpressureBuffer();
 
+    private final Scheduler.Worker inputLoop;
+
     private final InputEngine<ActionType, KeyType> engine;
 
     private final Disposable inputSourceSub;
@@ -22,15 +24,20 @@ class PublisherService<ActionType extends Enum<ActionType>, KeyType extends Enum
     private final Disposable bindingsSub;
 
     public PublisherService(KeyInputSource<KeyType> inputSource, BindingService<ActionType> bindingService, Scheduler scheduler) {
-        this.engine = new InputEngine<>(actions::tryEmitNext, scheduler);
+        this.inputLoop = scheduler.createWorker();
+        this.engine = new InputEngine<>(actions::tryEmitNext, scheduler, inputLoop);
 
         this.bindingsSub = Flux.from(bindingService.getBindingsPublisher())
-                .publishOn(scheduler)
-                .subscribe(engine::setBindings, actions::tryEmitError);
+                .subscribe(
+                        bindings -> inputLoop.schedule(() -> engine.setBindings(bindings)),
+                        error -> inputLoop.schedule(() -> actions.tryEmitError(error))
+                );
 
         this.inputSourceSub = Flux.from(inputSource.getEventPublisher())
-                .publishOn(scheduler)
-                .subscribe(engine::onEvent, actions::tryEmitError);
+                .subscribe(
+                        event -> inputLoop.schedule(() -> engine.onEvent(event)),
+                        error -> inputLoop.schedule(() -> actions.tryEmitError(error))
+                );
     }
 
 
@@ -43,6 +50,7 @@ class PublisherService<ActionType extends Enum<ActionType>, KeyType extends Enum
     public void close() {
         inputSourceSub.dispose();
         bindingsSub.dispose();
+        inputLoop.dispose();
         engine.dispose();
     }
 }
